@@ -121,6 +121,7 @@ fun HomeScreen(
 
     var sheetFace by remember { mutableStateOf<CardFaceItem?>(null) }
     var renameFace by remember { mutableStateOf<CardFaceItem?>(null) }
+    var legacyMaterial by remember { mutableStateOf<CardFaceItem?>(null) }
     var demoLoading by remember { mutableStateOf(false) }
 
     val pullToRefreshState = rememberPullToRefreshState()
@@ -276,6 +277,12 @@ fun HomeScreen(
             )
             RowDivider()
             top.yukonga.miuix.kmp.basic.BasicComponent(
+                title = "移除误识别的替换图",
+                summary = "仅用于旧替换图片条目；标记后不再自动采集",
+                onClick = { legacyMaterial = currentSheet; sheetFace = null },
+            )
+            RowDivider()
+            top.yukonga.miuix.kmp.basic.BasicComponent(
                 title = "加入黑名单",
                 summary = "从主界面隐藏这张卡面，不影响替换",
                 startAction = {
@@ -298,6 +305,21 @@ fun HomeScreen(
         }
         Spacer(Modifier.height(12.dp))
         TextButton(text = "取消", onClick = { sheetFace = null }, modifier = Modifier.fillMaxWidth())
+    }
+
+    legacyMaterial?.let { face ->
+        ConfirmDialog(show = true, title = "这张是旧替换图？",
+            message = "将移除这张图片的识别条目并保留替换素材标记。不会按同名处理其他卡片，也不修改钱包数据库。请勿用于真正的原始卡面。",
+            confirmText = "确认移除", destructive = false,
+            onConfirm = {
+                scope.launch {
+                    try {
+                        withContext(Dispatchers.IO) { prefs.discardReplacementEntry(face.url) }
+                        model.notify("旧替换图条目已移除，不再重复采集")
+                    } catch (t: Throwable) { model.notify(t.message ?: "移除失败") }
+                }
+                legacyMaterial = null
+            }, onDismiss = { legacyMaterial = null })
     }
 
     // 重命名对话框

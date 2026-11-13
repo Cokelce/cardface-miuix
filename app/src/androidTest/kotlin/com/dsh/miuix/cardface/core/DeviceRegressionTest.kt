@@ -276,4 +276,61 @@ class DeviceRegressionTest {
         } finally {RootShell.exec("rm -rf ${q(host)}");source.delete()}
     }
 
+    @Test fun clearReplacementRemovesOldMaterialAndPreventsRecapture() {
+        val ctx=Isolated(target)
+        try {
+            ctx.getSharedPreferences("settings",0).edit().putString("sync_mode","local").commit()
+            val prefs=AppPrefs(ctx,false)
+            val original="https://wallet.example/official.png";val custom="https://custom.example/old.png"
+            prefs.addCardUrl(listOf(original,custom));prefs.setReplacement(original,custom)
+            prefs.setReplacement(original,null)
+            prefs.addCardUrl(listOf(custom,original))
+            assertEquals(listOf(original),prefs.cardFaces().map{it.url})
+            assertFalse(prefs.allCardUrls().contains(custom));assertNull(prefs.replacementFor(original))
+            val reopened=AppPrefs(ctx,false)
+            reopened.addCardUrl(listOf(custom))
+            assertEquals(listOf(original),reopened.cardFaces().map{it.url})
+        } finally {ctx.close()}
+    }
+    @Test fun legacyOriginsFilterAfterMappingWasAlreadyRemoved() {
+        val ctx=Isolated(target)
+        try {
+            ctx.getSharedPreferences("settings",0).edit().putString("sync_mode","local").commit()
+            val prefs=AppPrefs(ctx,false)
+            val original="https://wallet.example/official.png";val custom="https://custom.example/old.png"
+            prefs.addCardUrl(listOf(original,custom))
+            ctx.getSharedPreferences("asset_origins",0).edit().putStringSet(CardRuntime.fingerprint(custom),setOf(original)).commit()
+            assertEquals(listOf(original),prefs.cardFaces().map{it.url})
+            assertEquals(1,prefs.sanitizeCardUrls());assertEquals(listOf(original),prefs.allCardUrls())
+        } finally {ctx.close()}
+    }
+    @Test fun explicitLegacyCleanupDoesNotTouchOfficialOrMappings() {
+        val ctx=Isolated(target)
+        try {
+            ctx.getSharedPreferences("settings",0).edit().putString("sync_mode","local").commit()
+            val prefs=AppPrefs(ctx,false)
+            val original="https://wallet.example/boc.png";val custom="https://custom.example/old.png"
+            prefs.addCardUrl(listOf(original,custom));prefs.setCustomName(original,"中国银行")
+            prefs.discardReplacementEntry(custom)
+            prefs.addCardUrl(listOf(custom))
+            assertEquals(listOf(original),prefs.allCardUrls());assertEquals("中国银行",prefs.cardFaces().single().displayName)
+            assertTrue(prefs.mappingPairs().isEmpty())
+        } finally {ctx.close()}
+    }
+    @Test fun migrateUserConfirmedLegacyAssetOnly() {
+        val hash=InstrumentationRegistry.getArguments().getString("confirmedLegacyAssetSha256")
+        org.junit.Assume.assumeTrue("Explicit user-confirmed migration only",hash?.matches(Regex("[a-f0-9]{64}"))==true)
+        val prefs=AppPrefs(target,false)
+        val candidates=prefs.allCardUrls().filter {CardRuntime.fingerprint(it)==hash}
+        assertTrue("ambiguous migration",candidates.size<=1)
+        val before=prefs.mappingPairs()
+        val originals=prefs.allCardUrls().filter {CardRuntime.fingerprint(it)!=hash}
+        assertTrue("official originals missing", originals.any { java.net.URI(it).host=="fast-wallet.finz.oppomobile.com" })
+        candidates.forEach {prefs.discardReplacementEntry(it)}
+        assertEquals(before,prefs.mappingPairs())
+        assertTrue(prefs.allCardUrls().containsAll(originals))
+        assertTrue(prefs.allCardUrls().none {CardRuntime.fingerprint(it)==hash})
+        assertTrue(target.getSharedPreferences("replacement_assets",0).all.isNotEmpty())
+    }
+
 }

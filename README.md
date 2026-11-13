@@ -4,7 +4,14 @@
 
 ## 下载
 
-[下载当前适配版 APK](https://github.com/Cokelce/cardface-miuix/releases/download/v1.0.5-oneplus.10/CardFace-1.0.5-oneplus.10.apk) · [全部版本](https://github.com/Cokelce/cardface-miuix/releases)
+[下载当前适配版 APK](https://github.com/Cokelce/cardface-miuix/releases/download/v1.0.5-oneplus.11/CardFace-1.0.5-oneplus.11.apk) · [全部版本](https://github.com/Cokelce/cardface-miuix/releases)
+
+### oneplus.11：清空替换后旧图片条目残留修复
+
+- 替换素材标记与当前映射分开持久保存。清空一张卡时解除映射、移除列表里的旧替换图片条目，不再将其当成原卡重新采集。
+- 兼容已有 asset_origins 来源历史；标记随备份导出/恢复，清理不按同名或第三方域名猜测。
+- 缺少来源记录的早期条目可长按→“移除误识别的替换图”，明确确认后标记，保留其他卡片和共用图片。
+- 首页仍为简约双列；159 项应用测试、21 项图像测试、21 项真机测试通过（含显式用户确认的旧条目迁移）。本机原官方卡面保留、旧素材条目已移除；钱包数据库未改写。
 
 ### oneplus.10 热修复
 
@@ -31,7 +38,7 @@
 
 - 目标钱包：`com.finshell.wallet`，基于 **5.52.0** 版本分析适配。
 - 适配版包名：`io.github.miambao.cardface.oneplus`，与上游原版共存。
-- 当前版本：`1.0.5-oneplus.10`（versionCode `25`）。
+- 当前版本：`1.0.5-oneplus.11`（versionCode `26`）。
 - 采集 `NfcCard`、`NfcCardDetail` 等卡片模型中的原始卡面 URL，接入原项目的编辑、图片映射与私有目录同步流程。
 - 更新关于页和使用说明，保留上游署名及 GPL-3.0 许可证。
 

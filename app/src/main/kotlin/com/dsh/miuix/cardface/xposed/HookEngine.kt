@@ -336,7 +336,7 @@ class HookEngine(
 
     private fun observeOriginal(url: String, card: Any?) {
         settingsRepo.snapshot()
-        if (UrlMapper.isReplacementAsset(url, settingsRepo.mappings())) return
+        if (settingsRepo.isReplacementMaterial(url)) return
         settingsRepo.addCardUrl(url)
         settingsRepo.reportSource(card, walletPackage, url)
         com.dsh.miuix.cardface.core.CardNameResolver.fromCard(card)?.let { settingsRepo.reportCardName(url, it) }
@@ -415,7 +415,7 @@ class HookEngine(
             val url = result as? String ?: return result
             if (captureCardName && url.isNotBlank()) {
                 try {
-                    if (!UrlMapper.isReplacementAsset(url, settingsRepo.mappings())) {
+                    if (!settingsRepo.isReplacementMaterial(url)) {
                         com.dsh.miuix.cardface.core.CardNameResolver.fromCard(chain.thisObject)?.let {
                             settingsRepo.reportCardName(url, it)
                         }
@@ -433,7 +433,7 @@ class HookEngine(
         return try {
             val settings = settingsRepo.snapshot()
             val mappings = settingsRepo.mappings()
-            if (UrlMapper.isReplacementAsset(url, mappings)) return ""
+            if (settingsRepo.isReplacementMaterial(url)) return ""
             val env = UrlMapper.Env(
                 isMiui = osType == MethodLocator.OS_MIUI,
                 showAllCards = settings.showAllCards,
@@ -446,7 +446,7 @@ class HookEngine(
             )
             val result = UrlMapper.map(url, env)
 
-            if (trackNew && result.trackUrl && !UrlMapper.isReplacementAsset(url, mappings)) {
+            if (trackNew && result.trackUrl && !settingsRepo.isReplacementMaterial(url)) {
                 settingsRepo.addCardUrl(url)
             }
 

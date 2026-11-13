@@ -16,8 +16,8 @@ android {
         applicationId = "io.github.miambao.cardface.oneplus"
         minSdk = 26
         targetSdk = 36
-        versionCode = 25
-        versionName = "1.0.5-oneplus.10"
+        versionCode = 26
+        versionName = "1.0.5-oneplus.11"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

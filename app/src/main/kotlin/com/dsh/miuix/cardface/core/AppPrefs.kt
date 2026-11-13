@@ -192,12 +192,39 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
         touch()
     }
 
+    private val replacementAssets = appContext.getSharedPreferences("replacement_assets", Context.MODE_PRIVATE)
+
+    fun isReplacementMaterial(url: String, mappings: Map<String, String> = mappingPairs()): Boolean =
+        ReplacementAssets.isKnown(url, mappings, replacementAssets.all.keys,
+            appContext.getSharedPreferences("asset_origins", Context.MODE_PRIVATE).all.keys)
+
+    @Synchronized
+    fun rememberReplacementMaterial(asset: String) {
+        check(replacementAssets.edit().putBoolean(ReplacementAssets.key(asset), true).commit()) { "记录替换素材失败" }
+    }
+
+    /** User-confirmed legacy entry: remove from originals but retain its provenance tombstone. */
+    fun discardReplacementEntry(url: String) {
+        rememberReplacementMaterial(url)
+        val next = allCardUrls().filterNot { CardIdentity.key(it) == CardIdentity.key(url) }.toSet()
+        check(urls.edit().putStringSet(KEY_ALL_CARD_URLS, next).commit()) { "清理旧替换条目失败" }
+        names.edit().remove(url).commit()
+        detectedNames.edit().remove(url).commit()
+        touch()
+    }
+
+    private fun discardKnownReplacementEntries() {
+        val before = allCardUrls()
+        val kept = before.filterNot { isReplacementMaterial(it) }.toSet()
+        if (kept.size != before.size) check(urls.edit().putStringSet(KEY_ALL_CARD_URLS, kept).commit()) { "清理替换条目失败" }
+    }
+
     fun cardFaces(): List<CardFaceItem> {
         val black = blacklistedUrls()
         val mappings = mappingPairs()
         return CardIdentity.group(allCardUrls()
             .filterNot { black.contains(it) }
-            .filterNot { com.dsh.miuix.cardface.xposed.UrlMapper.isReplacementAsset(it, mappings) }
+            .filterNot { isReplacementMaterial(it, mappings) }
             // 图标 / 横幅 / 广告 / 二维码等明显不是卡面的图，不展示。
             .filterNot { isJunkImageUrl(it) }
             .map { CardFaceItem(url = it, replacement = replacementFor(it), customName = customName(it), detectedName = detectedName(it), runtimeState = applicationState(it)) })
@@ -214,7 +241,7 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
         val before = allCardUrls()
         val mappings = mappingPairs()
         val kept = before.filterNot { url ->
-            isJunkImageUrl(url) || com.dsh.miuix.cardface.xposed.UrlMapper.isReplacementAsset(url, mappings)
+            isJunkImageUrl(url) || isReplacementMaterial(url, mappings)
         }
         if (kept.size == before.size) return 0
         urls.edit().putStringSet(KEY_ALL_CARD_URLS, kept.toSet()).apply()
@@ -246,6 +273,7 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
         val history = origins.edit()
         (keys.mapNotNull { key -> before[key]?.let { key to it } } + listOfNotNull(value?.takeIf { it.isNotBlank() }?.let { url to it }))
             .forEach { (original, asset) ->
+                rememberReplacementMaterial(asset)
                 val key = CardRuntime.fingerprint(asset)
                 history.putStringSet(key, origins.getStringSet(key, emptySet()).orEmpty() + original)
             }
@@ -258,6 +286,7 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
         val meta = appContext.getSharedPreferences("saved_meta", Context.MODE_PRIVATE).edit()
         keys.forEach { meta.putLong(it, now) }
         check(meta.commit()) { "保存时间写入失败" }
+        discardKnownReplacementEntries()
         touch()
         if (syncSnapshots) SnapshotSync.request(appContext)
     }
@@ -265,7 +294,7 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
     /** 追加卡面 URL（供演示数据/测试使用；hook 上报走的是 provider 写回）。 */
     fun addCardUrl(urls: List<String>) {
         val next = allCardUrls().toMutableSet()
-        next.addAll(urls)
+        next.addAll(urls.filterNot { isReplacementMaterial(it) })
         this.urls.edit().putStringSet(KEY_ALL_CARD_URLS, next).apply()
         touch()
     }

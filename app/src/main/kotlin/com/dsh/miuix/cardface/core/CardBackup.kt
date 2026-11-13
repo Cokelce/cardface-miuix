@@ -24,7 +24,9 @@ object CardBackup {
         val meta = JSONObject().put("urls", JSONArray(prefs.allCardUrls()))
             .put("blacklist", JSONArray(prefs.blacklistedUrls().toList()))
             .put("mappings", JSONObject(mappings)).put("names", strings("card_names"))
-            .put("detected", strings("detected_names")).put("createdAt", System.currentTimeMillis())
+            .put("detected", strings("detected_names"))
+            .put("replacementAssets", JSONArray(context.getSharedPreferences("replacement_assets", Context.MODE_PRIVATE).all.keys.toList()))
+            .put("createdAt", System.currentTimeMillis())
         val output = context.contentResolver.openOutputStream(uri, "wt") ?: error("备份文件未打开")
         output.use { BackupArchive.write(it, meta, images) }
         return images.size
@@ -43,7 +45,8 @@ object CardBackup {
             "settings" to prefs.settings, "card_urls" to prefs.urls,
             "saved_meta" to context.getSharedPreferences("saved_meta", Context.MODE_PRIVATE),
             "card_names" to context.getSharedPreferences("card_names", Context.MODE_PRIVATE),
-            "detected_names" to context.getSharedPreferences("detected_names", Context.MODE_PRIVATE))
+            "detected_names" to context.getSharedPreferences("detected_names", Context.MODE_PRIVATE),
+            "replacement_assets" to context.getSharedPreferences("replacement_assets", Context.MODE_PRIVATE))
         val snapshots = groups.mapValues { it.value.all.toMap() }
         val touched = linkedMapOf<String, MutableSet<String>>()
         fun mark(group: String, key: String) { touched.getOrPut(group) { linkedSetOf() }.add(key) }
@@ -100,6 +103,20 @@ object CardBackup {
                 meta.getJSONObject(backupGroup).let { values -> values.keys().forEach { mark(prefGroup, it); editor.putString(it, values.getString(it)) } }
                 require(editor.commit()) { "写入卡名失败" }
             }
+            val assetsEditor = groups.getValue("replacement_assets").edit()
+            meta.optJSONArray("replacementAssets")?.let { array ->
+                for (i in 0 until array.length()) {
+                    val key = array.getString(i)
+                    mark("replacement_assets", key); assetsEditor.putBoolean(key, true)
+                }
+            }
+            meta.getJSONObject("mappings").let { values -> values.keys().forEach { url ->
+                val oldValue = values.getString(url)
+                val key = ReplacementAssets.key(renamed[oldValue] ?: oldValue)
+                mark("replacement_assets", key); assetsEditor.putBoolean(key, true)
+            } }
+            require(assetsEditor.commit()) { "恢复替换素材标记失败" }
+            prefs.sanitizeCardUrls()
             prefs.bumpRevision()
             return plan.cardCount
         } catch (t: Throwable) {
@@ -112,6 +129,7 @@ object CardBackup {
                         null -> editor.remove(key)
                         is String -> editor.putString(key, value)
                         is Long -> editor.putLong(key, value)
+                        is Boolean -> editor.putBoolean(key, value)
                         is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
                         else -> rollbackOk = false
                     }

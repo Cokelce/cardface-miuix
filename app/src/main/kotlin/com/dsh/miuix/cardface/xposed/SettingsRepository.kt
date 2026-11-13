@@ -141,6 +141,7 @@ class SettingsRepository(private val module: XposedModule) {
 
     @Volatile private var sourceGroups: List<Set<String>> = emptyList()
     @Volatile private var assetOrigins: Map<String, Set<String>> = emptyMap()
+    @Volatile private var replacementAssetKeys: Set<String> = emptySet()
     private var sourceReadAt = 0L
     private val observedSources = java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>()
 
@@ -180,6 +181,12 @@ class SettingsRepository(private val module: XposedModule) {
         }.getOrNull()
         p.readAll("card_sources")?.let { sourceGroups = it.values.mapNotNull { value -> strings(value) } }
         p.readAll("asset_origins")?.let { data -> assetOrigins = data.mapValues { strings(it.value).orEmpty() } }
+        p.readAll("replacement_assets")?.let { replacementAssetKeys = it.keys }
+    }
+
+    fun isReplacementMaterial(url: String): Boolean {
+        refreshSources()
+        return com.dsh.miuix.cardface.core.ReplacementAssets.isKnown(url, mappings(), replacementAssetKeys, assetOrigins.keys)
     }
 
     fun originalForAsset(url: String): String? {
@@ -391,7 +398,7 @@ class SettingsRepository(private val module: XposedModule) {
 
     /** 把新 URL 加入 card_urls/all_card_url_set；已存在返回 false。 */
     fun addCardUrl(url: String): Boolean {
-        if (url.isEmpty()) return false
+        if (url.isEmpty() || isReplacementMaterial(url)) return false
         refresh(force = true)
         val current = cardUrls()
         if (url in current) return false

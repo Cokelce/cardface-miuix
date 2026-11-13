@@ -518,7 +518,7 @@ fun EditorScreen(
     ConfirmDialog(
         show = showClearConfirm,
         title = "清空这张卡面的替换？",
-        message = "会把这张卡面恢复成卡包里的原图（图库里的图片仍然保留）。",
+        message = "恢复这张卡的原图，并从识别列表移除旧替换素材；不会删除其他卡共用的图片。",
         confirmText = "清空",
         destructive = true,
         onConfirm = {

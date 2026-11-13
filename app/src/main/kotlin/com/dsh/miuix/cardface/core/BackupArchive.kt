@@ -94,6 +94,11 @@ object BackupArchive {
             val values = meta.getJSONArray(group); require(values.length() <= 5000) { "卡片条目过多" }
             for (i in 0 until values.length()) require(validUrl(values.getString(i))) { "卡面地址格式错误" }
         }
+        if (meta.has("replacementAssets")) {
+            val registry = meta.getJSONArray("replacementAssets")
+            require(registry.length() <= 10000) { "素材标记过多" }
+            for (i in 0 until registry.length()) require(registry.getString(i).matches(Regex("[a-f0-9]{64}"))) { "素材标记格式错误" }
+        }
         for (group in listOf("mappings", "names", "detected")) {
             val values = meta.getJSONObject(group); require(values.length() <= 5000) { "映射条目过多" }
             values.keys().forEach { key ->
