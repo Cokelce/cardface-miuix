@@ -16,8 +16,8 @@ android {
         applicationId = "io.github.miambao.cardface.oneplus"
         minSdk = 26
         targetSdk = 36
-        versionCode = 21
-        versionName = "1.0.5-oneplus.6"
+        versionCode = 22
+        versionName = "1.0.5-oneplus.7"
     }
 
     // 签名信息从本地的 keystore.properties 读取（该文件与 keystore/ 都不入库）。
@@ -72,4 +72,5 @@ dependencies {
     compileOnly("io.github.libxposed:api:101.0.1")
     implementation("io.github.libxposed:service:101.0.0")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

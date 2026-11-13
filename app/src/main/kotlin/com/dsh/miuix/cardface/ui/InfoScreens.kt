@@ -248,6 +248,7 @@ fun AboutScreen(
     val prefs = model.prefs
     val version = remember { DeviceBridge.versionName(context) }
     var checking by remember { mutableStateOf(false) }
+    var availableUpdate by remember { mutableStateOf<Updates.Release?>(null) }
     var info by remember { mutableStateOf<Pair<String, String>?>(null) }
     var autoCheckUpdate by remember { mutableStateOf(prefs.autoCheckUpdate) }
 
@@ -265,10 +266,7 @@ fun AboutScreen(
             if (latest == null) {
                 info = "检查更新" to "检查失败，请检查网络后重试。"
             } else if (latest.versionName.isNotBlank() && Updates.isNewer(latest.versionName, version)) {
-                info = "发现新版本 v${latest.versionName}" to
-                    "当前版本：v$version\n最新版本：v${latest.versionName}\n\n" +
-                    (latest.body.ifBlank { "暂无更新说明" }) +
-                    "\n\n项目地址：${latest.htmlUrl}"
+                availableUpdate = latest
             } else {
                 info = "已是最新版本" to "当前 v$version 已经是最新版本。"
             }
@@ -377,7 +375,7 @@ fun AboutScreen(
                     HorizontalDivider()
                     SwitchPreference(
                         title = "自动检查更新",
-                        summary = "启动时检查 GitHub 最新版本",
+                        summary = "启动时检查 Cokelce/cardface-miuix，包含适配测试版",
                         checked = autoCheckUpdate,
                         onCheckedChange = {
                             autoCheckUpdate = it
@@ -547,6 +545,23 @@ fun AboutScreen(
                     .fillMaxWidth()
                     .padding(top = 20.dp, bottom = 8.dp),
             )
+        }
+    }
+
+    availableUpdate?.let { release ->
+        top.yukonga.miuix.kmp.overlay.OverlayDialog(
+            show = true,
+            title = "发现新版本 v${release.versionName}",
+            summary = "当前版本：v$version\n\n" + release.body.ifBlank { "暂无更新说明" },
+            onDismissRequest = { availableUpdate = null },
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(text = "下载 APK", onClick = {
+                    availableUpdate = null
+                    openUrl(release.downloadUrl)
+                }, modifier = Modifier.weight(1f))
+                TextButton(text = "稍后", onClick = { availableUpdate = null }, modifier = Modifier.weight(1f))
+            }
         }
     }
 

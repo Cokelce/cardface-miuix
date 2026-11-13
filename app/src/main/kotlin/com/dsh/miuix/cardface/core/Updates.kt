@@ -1,55 +1,67 @@
 package com.dsh.miuix.cardface.core
 
-import org.json.JSONObject
+import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** GitHub Release 查询（只用于「检查更新 / 更新公告」）。 */
+/** Query this fork's public releases, including prereleases with downloadable APKs. */
 object Updates {
-
-    /** 语义化版本比较：1.0.10 > 1.0.6；无法解析时按字符串不等处理。 */
-    fun isNewer(latest: String, current: String): Boolean {
-        val a = latest.trim().removePrefix("v").substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
-        val b = current.trim().removePrefix("v").substringBefore('-').split('.').map { it.toIntOrNull() ?: 0 }
-        for (i in 0 until maxOf(a.size, b.size)) {
-            val x = a.getOrElse(i) { 0 }
-            val y = b.getOrElse(i) { 0 }
-            if (x != y) return x > y
-        }
-        return false
-    }
+    fun isNewer(latest: String, current: String): Boolean = UpdateVersion.isNewer(latest, current)
 
     data class Release(
         val versionName: String,
         val tag: String,
         val body: String,
         val htmlUrl: String,
+        val downloadUrl: String,
     )
 
-    private const val API =
-        "https://api.github.com/repos/MiamBao/cardface-miuix/releases/latest"
+    const val REPOSITORY = "Cokelce/cardface-miuix"
+    const val API = "https://api.github.com/repos/$REPOSITORY/releases?per_page=30"
 
-    /** 网络请求失败返回 null，调用方按「检查失败」处理。 */
+    /** Drafts, unrelated tags and releases with no completed APK upload are excluded. */
     fun fetchLatest(): Release? = runCatching {
         val conn = URL(API).openConnection() as HttpURLConnection
         conn.connectTimeout = 8000
         conn.readTimeout = 8000
-        conn.setRequestProperty("User-Agent", "cardface-miuix")
+        conn.useCaches = false
+        conn.setRequestProperty("User-Agent", "cardface-miuix-oneplus")
         conn.setRequestProperty("Accept", "application/vnd.github+json")
+        conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
         try {
             if (conn.responseCode != 200) return null
-            val text = conn.inputStream.bufferedReader().use { it.readText() }
-            val json = JSONObject(text)
-            val tag = json.optString("tag_name")
-            val version = tag.substringAfterLast('-').ifBlank { tag }.removePrefix("v")
-            Release(
-                versionName = version,
-                tag = tag,
-                body = json.optString("body").trim(),
-                htmlUrl = json.optString("html_url"),
-            )
+            parseReleases(conn.inputStream.bufferedReader().use { it.readText() })
         } finally {
             conn.disconnect()
         }
     }.getOrNull()
+
+    internal fun parseReleases(text: String): Release? {
+        val array = JSONArray(text)
+        var latest: Release? = null
+        for (i in 0 until array.length()) {
+            val item = array.optJSONObject(i) ?: continue
+            if (item.optBoolean("draft", false)) continue
+            val tag = item.optString("tag_name")
+            val version = UpdateVersion.fromTag(tag) ?: continue
+            val assets = item.optJSONArray("assets") ?: continue
+            var download: String? = null
+            for (j in 0 until assets.length()) {
+                val asset = assets.optJSONObject(j) ?: continue
+                val name = asset.optString("name")
+                val url = asset.optString("browser_download_url")
+                if (name.startsWith("CardFace-") && name.endsWith(".apk", true) &&
+                    asset.optString("state") == "uploaded" && asset.optLong("size") > 0 &&
+                    url.startsWith("https://github.com/$REPOSITORY/releases/download/")) {
+                    download = url
+                    break
+                }
+            }
+            if (download == null) continue
+            val release = Release(version, tag, item.optString("body").trim(),
+                "https://github.com/$REPOSITORY/releases/tag/$tag", download)
+            if (latest == null || isNewer(version, latest.versionName)) latest = release
+        }
+        return latest
+    }
 }
