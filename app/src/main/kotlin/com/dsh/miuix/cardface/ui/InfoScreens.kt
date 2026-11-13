@@ -249,6 +249,10 @@ fun AboutScreen(
     val version = remember { DeviceBridge.versionName(context) }
     var checking by remember { mutableStateOf(false) }
     var availableUpdate by remember { mutableStateOf<Updates.Release?>(null) }
+    var downloadProgress by remember { mutableStateOf<String?>(null) }
+    var downloadJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    var downloadedUpdate by remember { mutableStateOf<Pair<Updates.Release, java.io.File>?>(null) }
+
     var info by remember { mutableStateOf<Pair<String, String>?>(null) }
     var autoCheckUpdate by remember { mutableStateOf(prefs.autoCheckUpdate) }
 
@@ -552,15 +556,58 @@ fun AboutScreen(
         top.yukonga.miuix.kmp.overlay.OverlayDialog(
             show = true,
             title = "发现新版本 v${release.versionName}",
-            summary = "当前版本：v$version\n\n" + release.body.ifBlank { "暂无更新说明" },
+            summary = "当前版本：v$version\nAPK：${"%.1f".format(release.size / 1048576.0)} MiB\n" +
+                "SHA-256：${release.sha256 ?: "发布方未提供，暂不启用校验下载"}\n\n" + release.body.ifBlank { "暂无更新说明" }.take(4000),
             onDismissRequest = { availableUpdate = null },
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TextButton(text = "下载 APK", onClick = {
+                TextButton(text = "下载并校验", enabled = release.sha256 != null && downloadJob?.isActive != true, onClick = {
                     availableUpdate = null
-                    openUrl(release.downloadUrl)
+                    downloadJob = scope.launch {
+                        downloadProgress = "开始下载…"
+                        try {
+                            val file = withContext(Dispatchers.IO) {
+                                com.dsh.miuix.cardface.core.UpdateDownloader.download(context, release) { done, total ->
+                                    scope.launch { downloadProgress = "已下载 ${done * 100 / total}% · ${"%.1f".format(total / 1048576.0)} MiB" }
+                                }
+                            }
+                            downloadedUpdate = release to file
+                        } catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel }
+                        catch (t: Throwable) { info = "更新下载失败" to (t.message ?: "网络或存储异常") }
+                        finally { downloadProgress = null }
+                    }
                 }, modifier = Modifier.weight(1f))
                 TextButton(text = "稍后", onClick = { availableUpdate = null }, modifier = Modifier.weight(1f))
+            }
+        }
+    }
+
+    if (downloadProgress != null) {
+        top.yukonga.miuix.kmp.overlay.OverlayDialog(show = true, title = "下载并校验更新",
+            summary = downloadProgress.orEmpty() + "\n下载后校验大小、SHA-256、包名、版本与签名。",
+            onDismissRequest = { downloadJob?.cancel() }) {
+            TextButton(text = "取消", onClick = { downloadJob?.cancel() })
+        }
+    }
+    downloadedUpdate?.let { (release, file) ->
+        top.yukonga.miuix.kmp.overlay.OverlayDialog(show = true, title = "更新校验通过",
+            summary = "v${release.versionName}\n大小、SHA-256、包名、版本与当前签名均已核对。点击安装后由系统安装器确认。",
+            onDismissRequest = { downloadedUpdate = null }) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(text = "安装", onClick = {
+                    scope.launch {
+                        try {
+                            withContext(Dispatchers.IO) {
+                                com.dsh.miuix.cardface.core.UpdateIntegrity.check(release.size, file.length(), release.sha256,
+                                    com.dsh.miuix.cardface.core.BackupArchive.sha(file))
+                                com.dsh.miuix.cardface.core.UpdateDownloader.validateApk(context, file, release.versionName)
+                            }
+                            com.dsh.miuix.cardface.core.UpdateDownloader.install(context, file)
+                            downloadedUpdate = null
+                        } catch (t: Throwable) { info = "安装检查" to (t.message ?: "安装器启动失败") }
+                    }
+                }, modifier = Modifier.weight(1f))
+                TextButton(text = "稍后", onClick = { downloadedUpdate = null }, modifier = Modifier.weight(1f))
             }
         }
     }

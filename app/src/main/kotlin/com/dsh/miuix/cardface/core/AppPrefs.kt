@@ -182,6 +182,8 @@ class AppPrefs(context: Context) {
     }
 
     fun customName(url: String): String? = names.getString(url, null)?.takeIf { it.isNotBlank() }
+        ?: names.all.entries.firstOrNull { CardIdentity.key(it.key) == CardIdentity.key(url) }
+            ?.value?.let { it as? String }?.takeIf { it.isNotBlank() }
 
     fun setCustomName(url: String, name: String?) {
         names.edit().apply {
@@ -193,12 +195,12 @@ class AppPrefs(context: Context) {
     fun cardFaces(): List<CardFaceItem> {
         val black = blacklistedUrls()
         val mappings = mappingPairs()
-        return allCardUrls()
+        return CardIdentity.group(allCardUrls()
             .filterNot { black.contains(it) }
             .filterNot { com.dsh.miuix.cardface.xposed.UrlMapper.isReplacementAsset(it, mappings) }
             // 图标 / 横幅 / 广告 / 二维码等明显不是卡面的图，不展示。
             .filterNot { isJunkImageUrl(it) }
-            .map { CardFaceItem(url = it, replacement = replacementFor(it), customName = customName(it), detectedName = detectedName(it)) }
+            .map { CardFaceItem(url = it, replacement = replacementFor(it), customName = customName(it), detectedName = detectedName(it), runtimeState = applicationState(it)) })
     }
 
     /** 卡包里大量非卡面图片（图标、横幅、广告）会被 hook 抓到，这里统一过滤。 */
@@ -235,7 +237,7 @@ class AppPrefs(context: Context) {
         val current = com.dsh.miuix.cardface.xposed.UrlMapper.lookupMapping(url, mappings)
         val normalized = com.dsh.miuix.cardface.xposed.UrlMapper.normalizedUrl(url)
         val matchedKeys = mappings.keys.filter {
-            com.dsh.miuix.cardface.xposed.UrlMapper.normalizedUrl(it) == normalized
+            com.dsh.miuix.cardface.xposed.UrlMapper.normalizedUrl(it) == normalized || CardIdentity.key(it) == CardIdentity.key(url)
         }.ifEmpty {
             // Mirror the unique-filename fallback used by the hook, without touching unrelated cards.
             mappings.keys.filter { it.substringBefore('?').substringAfterLast('/') ==
@@ -246,6 +248,9 @@ class AppPrefs(context: Context) {
         }
         if (value.isNullOrBlank()) editor.remove(url) else editor.putString(url, value)
         editor.apply()
+        val meta = appContext.getSharedPreferences("saved_meta", Context.MODE_PRIVATE).edit()
+        (matchedKeys + url).forEach { meta.putLong(it, System.currentTimeMillis()) }
+        meta.apply()
         touch()
     }
 
@@ -276,9 +281,39 @@ class AppPrefs(context: Context) {
         val out = LinkedHashMap<String, String>()
         settings.all.forEach { (key, value) ->
             if (key in reserved) return@forEach
-            if (value is String && value.isNotEmpty()) out[key] = value
+            if (value is String && value.isNotEmpty() && (key.startsWith("https://") || key.startsWith("http://"))) out[key] = value
         }
         return out
+    }
+
+    fun savedAt(url: String): Long = appContext.getSharedPreferences("saved_meta", Context.MODE_PRIVATE)
+        .all.entries.filter { CardIdentity.key(it.key) == CardIdentity.key(url) }
+        .mapNotNull { it.value as? Long }.maxOrNull() ?: 0L
+
+    fun evidence(url: String): org.json.JSONObject? {
+        val prefs = appContext.getSharedPreferences("apply_state", Context.MODE_PRIVATE)
+        val matches = prefs.all.entries.filter { CardIdentity.key(it.key) == CardIdentity.key(url) }
+            .mapNotNull { runCatching { org.json.JSONObject(it.value as String) }.getOrNull() }
+        return matches.maxByOrNull { it.optLong("at") }
+    }
+
+    fun applicationState(url: String): String {
+        val e = evidence(url)
+        val at = e?.optLong("at") ?: 0L
+        val error = e?.optString("error")?.takeIf { it.isNotBlank() }
+        return CardRuntime.state(replacementFor(url), savedAt(url), e?.optString("fingerprint"),
+            if (error == null) at else 0L, if (error != null) at else 0L, error)
+    }
+
+    fun applicationDetails(url: String): String {
+        val e = evidence(url)
+        fun time(value: Long) = if (value <= 0) "暂无" else
+            java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(value))
+        val variants = allCardUrls().count { CardIdentity.key(it) == CardIdentity.key(url) }
+        return "状态：${applicationState(url)}\n同图地址：$variants 条\n保存时间：${time(savedAt(url))}\n最近回报：${time(e?.optLong("at") ?: 0)}\n" +
+            "卡名：${customName(url) ?: detectedName(url) ?: "尚未采集"}\n" +
+            "${e?.optString("error")?.takeIf { it.isNotBlank() }?.let { "异常：$it\n" } ?: ""}" +
+            "已命中表示 Hook 已交出替换地址，不代表图片显示成功；网络图片仍受网络可达性影响。"
     }
 
     fun mappedImageNames(): List<String> = settings.all.values

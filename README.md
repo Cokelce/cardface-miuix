@@ -4,21 +4,25 @@
 
 ## 下载
 
-[下载当前适配版 APK](https://github.com/Cokelce/cardface-miuix/releases/download/v1.0.5-oneplus.7/CardFace-1.0.5-oneplus.7.apk) · [全部版本](https://github.com/Cokelce/cardface-miuix/releases)
+[下载当前适配版 APK](https://github.com/Cokelce/cardface-miuix/releases/download/v1.0.5-oneplus.8/CardFace-1.0.5-oneplus.8.apk) · [全部版本](https://github.com/Cokelce/cardface-miuix/releases)
 
-### 本次更新
+### 本次更新（oneplus.8 基线）
 
-- 修复网络替换图片被重复采集后显示“未替换”的问题，统一首页和 Hook 的映射查询。
-- 首页保持简约双列；编辑页增加“原图 → 替换后”预览。
-- 采集一加钱包真实卡名；显示顺序为手动名称、钱包名称、图片文件名。
-- 关于页清理指定署名，项目入口链接改为本仓库。
-- 应用内更新检查现使用本仓库 Releases（含测试版），按完整 oneplus.N 版本号比较，并提供 APK 下载按钮。
+- 保留 Root 图片同步方案与简约双列首页。
+- 状态区分未设置、待加载、Hook 已命中和同步异常，命中不等于图片渲染成功。
+- 保守整理同图地址变体，保留手动名称。
+- 设置页增加 ZIP 备份恢复、钱包兼容检测和重新同步。
+- 更新下载增加大小、SHA-256、包名、版本和签名校验。
+
+### 已知问题
+
+此包按现状归档发布。已发现 Getter 替换可能参与钱包持久化、同步失败提示不准确、坏副本未校验、清空映射及快照回退不充分等缺陷，可能表现为卡面失效或恢复原图；修复版本将另行发布，不覆盖本版本资产。
 
 ## 一加钱包适配
 
 - 目标钱包：`com.finshell.wallet`，基于 **5.52.0** 版本分析适配。
 - 适配版包名：`io.github.miambao.cardface.oneplus`，与上游原版共存。
-- 当前版本：`1.0.5-oneplus.7`（versionCode `22`）。
+- 当前版本：`1.0.5-oneplus.8`（versionCode `23`）。
 - 采集 `NfcCard`、`NfcCardDetail` 等卡片模型中的原始卡面 URL，接入原项目的编辑、图片映射与私有目录同步流程。
 - 更新关于页和使用说明，保留上游署名及 GPL-3.0 许可证。
 
@@ -30,7 +34,7 @@
 
 ### 验证状态
 
-已完成 APK 构建、安装版本核对及应用启动检查；79 项应用测试和 21 项图像管线测试通过。钱包内实际注入及换图效果仍待真机验证，其他钱包版本兼容性待验证。
+已完成 APK 构建、安装版本核对及应用启动检查；123 项应用测试、21 项图像管线测试及 5 项隔离真机测试通过。钱包内实际注入及换图效果仍待真机验证，其他钱包版本兼容性待验证。
 
 ### 构建适配版
 

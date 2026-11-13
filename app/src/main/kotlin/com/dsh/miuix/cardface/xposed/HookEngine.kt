@@ -40,12 +40,16 @@ class HookEngine(
 
     @Volatile
     private var installedCount = 0
+    private var cardGetterCount = 0
+    private var loaderCount = 0
+    private val missingTargets = java.util.Collections.synchronizedList(ArrayList<String>())
 
     /** 已安装的 hook 数量（供入口判断是否需要重试）。 */
     val installedHooks: Int get() = installedCount
 
     @Volatile
     private var contextReady = false
+    @Volatile private var contextForHealth: Context? = null
 
     @Volatile
     private var rootDenied = false
@@ -80,12 +84,33 @@ class HookEngine(
         }
         locator.close()
 
+        reportHealth()
         XLog.i("cardface hook installed hooks=$installedCount for $walletPackage")
         if (installedCount > 0) {
             settingsRepo.touchLastHookAt(force = true)
         } else {
             XLog.e("no hook point installed for $walletPackage, check settings / DexKit / LSPosed scope")
         }
+    }
+
+    private fun reportHealth() {
+        val info = org.json.JSONObject()
+            .put("at", System.currentTimeMillis()).put("module", com.dsh.miuix.cardface.core.BuildInfo.INTERNAL_VERSION)
+            .put("hooks", installedCount).put("cardGetters", cardGetterCount).put("loaders", loaderCount)
+            .put("framework", "${module.frameworkName} ${module.frameworkVersion}")
+            .put("missing", org.json.JSONArray(missingTargets.toList()))
+        try {
+            val app = Application::class.java.getMethod("getProcessName")
+            info.put("process", app.invoke(null)?.toString().orEmpty())
+        } catch (_: Throwable) { }
+        runCatching {
+            val ctx = contextForHealth ?: return@runCatching null
+            val pi = ctx.packageManager.getPackageInfo(walletPackage, 0)
+            @Suppress("DEPRECATION")
+            val code = if (android.os.Build.VERSION.SDK_INT >= 28) pi.longVersionCode else pi.versionCode.toLong()
+            info.put("walletVersion", pi.versionName).put("walletVersionCode", code)
+        }
+        settingsRepo.queueRuntime("runtime_health", walletPackage, info.toString())
     }
 
     // ---------- Context 捕获 ----------
@@ -141,11 +166,13 @@ class HookEngine(
         if (contextReady) return
         contextReady = true
         val appContext = context.applicationContext ?: context
+        contextForHealth = appContext
         // 不要阻塞卡包的启动线程：provider 初始化 / DexKit 查询 / 写回都放后台线程。
         try {
             Thread({
                 try {
                     settingsRepo.attachContext(appContext)
+                    reportHealth()
                 } catch (t: Throwable) {
                     XLog.w("attach context failed", t)
                 }
@@ -239,6 +266,7 @@ class HookEngine(
                 if (method.returnType != String::class.java) continue
                 install(method, "oneplus:card-url", false, false, true)
             } catch (t: Throwable) {
+                missingTargets.add("$name#$getter")
                 XLog.w("optional OnePlus getter unavailable: $name#$getter", t)
             }
         }
@@ -260,8 +288,12 @@ class HookEngine(
                     }
                 })
                 installedCount++
+                loaderCount++
             }
-        } catch (t: Throwable) { XLog.w("optional OnePlus image loader unavailable", t) }
+        } catch (t: Throwable) {
+            missingTargets.add("CircleNetworkImageView.g1/i1")
+            XLog.w("optional OnePlus image loader unavailable", t)
+        }
     }
 
     /**
@@ -287,6 +319,7 @@ class HookEngine(
         try {
             module.hook(method).intercept(UrlHooker(loadUrlFromArg, replaceUrlToArg, trackNewUrls, label == "oneplus:card-url"))
             installedCount++
+            if (label == "oneplus:card-url") cardGetterCount++
             XLog.i(
                 "hooked ${method.declaringClass.name}#${method.name} ($label, " +
                     "loadUrlFromArg=$loadUrlFromArg, replaceUrlToArg=$replaceUrlToArg)",
@@ -371,6 +404,7 @@ class HookEngine(
             }
 
             var finalUrl = result.url
+            var copyError: String? = null
             val copy = result.copy
             if (copy != null) {
                 if (copyToWallet(copy)) {
@@ -378,10 +412,14 @@ class HookEngine(
                 } else {
                     // root 不可用时退回 content://，保证卡面仍然能替换。
                     finalUrl = UrlMapper.LOCAL_IMAGE_URI_PREFIX + copy.localName
+                    copyError = "本地图片同步失败，已回退 Provider；请重新同步或检查 Root 授权"
                     XLog.w("compat copy failed, fallback to content:// for ${copy.localName}")
                 }
             }
 
+            if (finalUrl.isNotEmpty() && !settings.testMode) {
+                UrlMapper.lookupMapping(url, mappings)?.let { settingsRepo.reportApplication(url, it, copyError) }
+            }
             settingsRepo.touchLastHookAt()
             XLog.i(
                 "load image url: $url -> " +

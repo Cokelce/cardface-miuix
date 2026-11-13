@@ -30,4 +30,10 @@ class UpdatesTest {
     @Test fun downloadIsActualReleaseAsset() {
         assertEquals("https://github.com/Cokelce/cardface-miuix/releases/download/v1.0.5-oneplus.7/CardFace-test.apk", Updates.parseReleases("[${release("v1.0.5-oneplus.7")}]")!!.downloadUrl)
     }
+    @Test fun releaseDigestAndSizeAreExposed() {
+        val json=release("v1.0.5-oneplus.8").replace("\"size\":100", "\"digest\":\"sha256:${"a".repeat(64)}\",\"size\":100")
+        val result=Updates.parseReleases("[$json]")!!
+        assertEquals(100L,result.size);assertEquals("a".repeat(64),result.sha256)
+    }
+
 }

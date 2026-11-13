@@ -14,6 +14,8 @@ object Updates {
         val body: String,
         val htmlUrl: String,
         val downloadUrl: String,
+        val size: Long = 0L,
+        val sha256: String? = null,
     )
 
     const val REPOSITORY = "Cokelce/cardface-miuix"
@@ -46,6 +48,8 @@ object Updates {
             val version = UpdateVersion.fromTag(tag) ?: continue
             val assets = item.optJSONArray("assets") ?: continue
             var download: String? = null
+            var size = 0L
+            var hash: String? = null
             for (j in 0 until assets.length()) {
                 val asset = assets.optJSONObject(j) ?: continue
                 val name = asset.optString("name")
@@ -54,12 +58,14 @@ object Updates {
                     asset.optString("state") == "uploaded" && asset.optLong("size") > 0 &&
                     url.startsWith("https://github.com/$REPOSITORY/releases/download/")) {
                     download = url
+                    size = asset.optLong("size")
+                    hash = UpdateIntegrity.sha256(asset.optString("digest"), item.optString("body"))
                     break
                 }
             }
             if (download == null) continue
             val release = Release(version, tag, item.optString("body").trim(),
-                "https://github.com/$REPOSITORY/releases/tag/$tag", download)
+                "https://github.com/$REPOSITORY/releases/tag/$tag", download, size, hash)
             if (latest == null || isNewer(version, latest.versionName)) latest = release
         }
         return latest

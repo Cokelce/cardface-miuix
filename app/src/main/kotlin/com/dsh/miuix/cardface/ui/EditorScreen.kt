@@ -248,6 +248,11 @@ fun EditorScreen(
                         style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.onSurface,
                     )
+                    Text(
+                        text = prefs.applicationDetails(url),
+                        style = MiuixTheme.textStyles.footnote2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
                     Spacer(Modifier.height(2.dp))
                     Text(
                         text = url,

@@ -402,7 +402,7 @@ private fun HeroStatusCard(
                             color = onSurface,
                         )
                         Text(
-                            text = "已识别 $faceCount 张 · 已替换 $replacedCount 张",
+                            text = "已识别 $faceCount 张 · 已设置 $replacedCount 张",
                             fontSize = 13.sp,
                             color = summaryColor,
                         )
@@ -647,7 +647,7 @@ private fun CardFaceTile(
             )
             if (face.replaced) {
                 StatusPill(
-                    text = "已替换",
+                    text = face.runtimeState,
                     containerColor = MiuixTheme.colorScheme.primary,
                     contentColor = MiuixTheme.colorScheme.onPrimary,
                     modifier = Modifier
@@ -656,7 +656,7 @@ private fun CardFaceTile(
                 )
             } else {
                 StatusPill(
-                    text = "未替换",
+                    text = "未设置",
                     containerColor = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                     contentColor = MiuixTheme.colorScheme.surface,
                     modifier = Modifier

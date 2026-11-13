@@ -206,6 +206,10 @@ fun SettingsScreen(
             }
         }
 
+        item(key = "maintenance") {
+            MaintenanceTools(model) { title, message -> info = title to message }
+        }
+
         // ---------- 卡面显示 ----------
         item(key = "display") {
             SettingsGroup("卡面显示") {

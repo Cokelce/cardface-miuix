@@ -10,6 +10,8 @@ data class CardFaceItem(
     /** 用户自定义的卡面名称（为空时用 URL 推导）。 */
     val customName: String? = null,
     val detectedName: String? = null,
+    val runtimeState: String = "未设置",
+    val aliasCount: Int = 1,
 ) {
     val replaced: Boolean get() = !replacement.isNullOrBlank()
     val replacementIsRemote: Boolean

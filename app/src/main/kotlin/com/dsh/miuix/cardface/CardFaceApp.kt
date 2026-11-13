@@ -90,6 +90,8 @@ fun CardFaceApp() {
         val root = "content://${com.dsh.miuix.cardface.core.HookPrefsProtocol.AUTHORITY}"
         resolver.registerContentObserver(android.net.Uri.parse("$root/detected_names"), true, observer)
         resolver.registerContentObserver(android.net.Uri.parse("$root/card_urls"), true, observer)
+        resolver.registerContentObserver(android.net.Uri.parse("$root/apply_state"), true, observer)
+        resolver.registerContentObserver(android.net.Uri.parse("$root/runtime_health"), true, observer)
         onDispose { resolver.unregisterContentObserver(observer) }
     }
 

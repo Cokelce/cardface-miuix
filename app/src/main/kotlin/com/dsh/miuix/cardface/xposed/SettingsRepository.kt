@@ -92,6 +92,50 @@ class SettingsRepository(private val module: XposedModule) {
         }
     }
 
+    private val pendingRuntime = java.util.concurrent.ConcurrentHashMap<Pair<String, String>, String>()
+    private val reportedAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    private val runtimeQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    fun reportApplication(url: String, replacement: String, error: String? = null) {
+        val now = System.currentTimeMillis()
+        val key = "apply:$url:$replacement:${error.orEmpty()}"
+        synchronized(reportedAt) {
+            if (now - (reportedAt[key] ?: 0L) < 15_000) return
+            if (reportedAt.size > 1024) reportedAt.clear()
+            reportedAt[key] = now
+        }
+        val value = org.json.JSONObject().put("at", now)
+            .put("fingerprint", com.dsh.miuix.cardface.core.CardRuntime.fingerprint(replacement))
+            .put("error", error.orEmpty()).toString()
+        queueRuntime("apply_state", url, value)
+    }
+
+    fun queueRuntime(group: String, key: String, value: String) {
+        if (pendingRuntime.size < 512 || pendingRuntime.containsKey(group to key)) pendingRuntime[group to key] = value
+        flushRuntime()
+    }
+
+    private fun flushRuntime() {
+        if (provider == null || pendingRuntime.isEmpty() || !runtimeQueued.compareAndSet(false, true)) return
+        nameWorker.execute {
+            var success = false
+            try {
+                val p = provider ?: return@execute
+                pendingRuntime.toMap().entries.groupBy { it.key.first }.forEach { (group, entries) ->
+                    val batch = entries.associate { (it.key.second to com.dsh.miuix.cardface.core.HookPrefsProtocol.TYPE_STRING) to it.value }
+                    if (p.bulkWrite(group, batch)) {
+                        success = true
+                        entries.forEach { pendingRuntime.remove(it.key, it.value) }
+                    }
+                }
+            } catch (t: Throwable) { XLog.w("runtime report failed", t) }
+            finally {
+                runtimeQueued.set(false)
+                if (success && pendingRuntime.isNotEmpty()) flushRuntime()
+            }
+        }
+    }
+
     // ---------- 初始化 ----------
 
     fun init() {
@@ -116,6 +160,7 @@ class SettingsRepository(private val module: XposedModule) {
         loadSnapshot()
         val p = ProviderPrefs(this.context!!)
         provider = p
+        flushRuntime()
         flushCardNames()
         registerObserver()
         refresh(force = true)
@@ -159,8 +204,7 @@ class SettingsRepository(private val module: XposedModule) {
         val settings = p.readAll(GROUP_SETTINGS)
         val cards = p.readAll(GROUP_CARD_URLS)
         if (settings != null || cards != null) {
-            providerReadable = true
-            if (settings != null) providerSettings = settings
+            if (settings != null) { providerReadable = true; providerSettings = settings }
             if (cards != null) providerCardUrls = cards
             XLog.d("provider prefs refreshed: settings=${providerSettings.size}, card_urls=${providerCardUrls.size}")
         }
@@ -168,14 +212,13 @@ class SettingsRepository(private val module: XposedModule) {
 
     fun mergeSettings(): Map<String, Any?> {
         val out = LinkedHashMap<String, Any?>()
-        // 远程（LSPosed 框架）优先级最高；provider 次之。合并顺序：provider -> framework。
-        out.putAll(providerSettings)
         frameworkSettings?.let { prefs ->
-            try {
-                out.putAll(prefs.all)
-            } catch (t: Throwable) {
-                XLog.w("read framework settings failed", t)
-            }
+            try { out.putAll(prefs.all) } catch (t: Throwable) { XLog.w("read framework settings failed", t) }
+        }
+        // A successful provider read is the current app state, including removals.
+        if (providerReadable) {
+            out.clear()
+            out.putAll(providerSettings)
         }
         return out
     }
@@ -256,10 +299,10 @@ class SettingsRepository(private val module: XposedModule) {
     fun mappings(): Map<String, String> {
         val out = LinkedHashMap<String, String>()
         // 快照优先级最低：先放快照，再被 provider，最后被远程覆盖。
-        out.putAll(snapshotMappings)
+        if (!providerReadable && frameworkSettings == null) out.putAll(snapshotMappings)
         mergeSettings().forEach { (key, value) ->
             if (key in RESERVED_KEYS) return@forEach
-            if (value is String && value.isNotEmpty()) out[key] = value
+            if (value is String && value.isNotEmpty() && (key.startsWith("https://") || key.startsWith("http://"))) out[key] = value
         }
         return out
     }

@@ -95,6 +95,9 @@ object UrlMapper {
      */
     fun lookupMapping(url: String, mappings: Map<String, String>): String? {
         mappings[url]?.let { return it }
+        val identity = com.dsh.miuix.cardface.core.CardIdentity.key(url)
+        val sameCard = mappings.filterKeys { com.dsh.miuix.cardface.core.CardIdentity.key(it) == identity }.values.distinct()
+        if (sameCard.size == 1) return sameCard.first()
         val normalized = normalizedUrl(url)
         mappings.entries.firstOrNull { normalizedUrl(it.key) == normalized }?.let { return it.value }
         val base = normalized.substringAfterLast('/')
