@@ -21,7 +21,7 @@ class MethodLocator(
 
     private var bridge: DexKitBridge? = null
 
-    private val walletPackage: String = MIUI_PACKAGE
+    private val walletPackage: String = appInfo.packageName
 
     private val filesDir: File by lazy {
         val dataDir = appInfo.dataDir ?: "/data/data/$walletPackage"
@@ -460,6 +460,8 @@ class MethodLocator(
 
     companion object {
         const val OS_MIUI = 0
+        const val OS_ONEPLUS = 1
+        const val ONEPLUS_PACKAGE = "com.finshell.wallet"
 
         const val SLOT_URL_FROM_ARG = 0
         const val SLOT_REPLACE_ARG = 1

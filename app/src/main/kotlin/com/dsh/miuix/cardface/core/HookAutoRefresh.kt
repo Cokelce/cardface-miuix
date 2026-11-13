@@ -10,7 +10,7 @@ package com.dsh.miuix.cardface.core
 object HookAutoRefresh {
 
     /** hook 定位逻辑版本；改动 MethodLocator 后 +1，用户打开 App 就会自动刷新卡包。 */
-    const val TARGET_VERSION = 4
+    const val TARGET_VERSION = 5
     private const val KEY_VERSION = "hook_target_version"
 
     fun ensureFresh(context: android.content.Context, prefs: AppPrefs): Boolean {

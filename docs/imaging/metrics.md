@@ -12,9 +12,9 @@
 | 方法 | 纯算法耗时 (ms) | PSNR vs 理想低通 (dB) | SSIM | 平均梯度能量 | 平均亮度偏差 | 说明 |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | nearest | 1 | 25.55 | 0.9323 | 53.00 | -1.92 | 点采样（最差对照） |
-| bilinear | 5 | 27.69 | 0.9587 | 51.05 | -1.90 | 原版等效：`Bitmap.createScaledBitmap(..., true)` 的 2x2 采样 |
-| lanczos3 | 90 | 32.92 | 0.9891 | 48.40 | -0.81 | **新版默认**：缩放感知 Lanczos3 + 线性光 |
-| lanczos3-gamma | 91 | 33.99 | 0.9918 | 47.13 | -1.88 | 对照：Lanczos3 但在 sRGB 空间重采样（关闭线性光） |
+| bilinear | 17 | 27.69 | 0.9587 | 51.05 | -1.90 | 原版等效：`Bitmap.createScaledBitmap(..., true)` 的 2x2 采样 |
+| lanczos3 | 245 | 32.92 | 0.9891 | 48.40 | -0.81 | **新版默认**：缩放感知 Lanczos3 + 线性光 |
+| lanczos3-gamma | 213 | 33.99 | 0.9918 | 47.13 | -1.88 | 对照：Lanczos3 但在 sRGB 空间重采样（关闭线性光） |
 
 
 ## 对比图
@@ -27,5 +27,5 @@
 - 与理想低通参考的 PSNR：lanczos3 = 32.92 dB，bilinear = 27.69 dB，nearest = 25.55 dB；
   新版比原版等效高 **5.23 dB**，比点采样高 7.37 dB。
 - SSIM：lanczos3 = 0.9891，bilinear = 0.9587。
-- 耗时：lanczos3 ≈ 90 ms（JVM 纯算法，单次），bilinear ≈ 5 ms。
+- 耗时：lanczos3 ≈ 245 ms（JVM 纯算法，单次），bilinear ≈ 17 ms。
   Android 端先用 `inSampleSize` 解码到约 3MP，lanczos3 纯算法约 40~80ms。

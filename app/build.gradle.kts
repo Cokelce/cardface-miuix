@@ -13,11 +13,11 @@ android {
     buildToolsVersion = "37.0.0"
 
     defaultConfig {
-        applicationId = "io.github.miambao.cardface"
+        applicationId = "io.github.miambao.cardface.oneplus"
         minSdk = 26
         targetSdk = 36
-        versionCode = 15
-        versionName = "1.0.5"
+        versionCode = 17
+        versionName = "1.0.5-oneplus.2"
     }
 
     // 签名信息从本地的 keystore.properties 读取（该文件与 keystore/ 都不入库）。

@@ -104,7 +104,7 @@ fun GuideScreen(
                 NumberedStep(
                     index = 1,
                     title = "在 LSPosed 里启用模块",
-                    description = "勾选作用域：小米智能卡。改完建议重启一次手机。",
+                    description = "勾选作用域：本机钱包（一加钱包 / 小米智能卡）。改完建议重启一次手机。",
                     done = status?.lsposedInstalled == true && status.moduleActivated,
                     actionText = "打开 LSPosed",
                     onAction = {
@@ -159,7 +159,7 @@ fun GuideScreen(
             "打开方式：\n" +
             "1. 下拉通知栏；\n" +
             "2. 点「Android 系统 · Xposed 模块已更新」或「LSPosed」通知；\n" +
-            "3. 在模块列表里启用「卡面工坊」，勾选作用域（小米智能卡）；\n" +
+            "3. 在模块列表里启用「卡面工坊」，勾选作用域（一加钱包 / 小米智能卡）；\n" +
             "4. 强行停止卡包，再打开卡包把卡面浏览一遍。",
         onDismiss = { showManagerHelp = false },
     )
@@ -173,9 +173,9 @@ private val FAQ_ITEMS = listOf(
     "改完卡面没有变化？" to
         "替换是在卡包进程里生效的，保存后要把卡包从后台划掉再重新打开（或等系统杀掉进程）。设置页的「清除 hook 点缓存」也会顺带重启卡包。",
     "识别不到任何卡面？" to
-        "先在 LSPosed 里确认「卡面工坊」已启用、作用域已勾选小米智能卡，然后打开卡包把卡面浏览一遍，再回到首页下拉刷新。",
+        "先在 LSPosed 里确认「卡面工坊」已启用、作用域已勾选本机钱包，然后打开卡包把卡面浏览一遍，再回到首页下拉刷新。",
     "LSPosed 作用域是什么？" to
-        "作用域决定模块要注入哪些应用。本模块只作用于小米智能卡，勾选它就够了，不要全选。",
+        "作用域决定模块要注入哪些应用。一加设备勾选钱包（com.finshell.wallet），小米设备勾选小米智能卡。",
     "为什么有些小图没被识别？" to
         "默认会过滤掉卡包里的小图标（w270h480、logo、Mibi 之类），避免列表里塞满无关图片。想全部显示可以打开设置里的「显示全部卡面」。",
     "黑名单有什么用？" to
@@ -183,7 +183,7 @@ private val FAQ_ITEMS = listOf(
     "图片会被上传吗？" to
         "不会。所有图片都在本机处理（裁剪和缩放都在手机上完成），应用没有上传逻辑，也不收集任何使用数据。",
     "支持哪些卡包？" to
-        "目前支持小米智能卡（含小米超级岛卡面）。其他卡包暂不支持。",
+        "支持一加钱包（com.finshell.wallet，基于 5.52.0 适配）与小米智能卡。",
 )
 
 @Composable
@@ -315,13 +315,13 @@ fun AboutScreen(
                     Spacer(Modifier.size(14.dp))
                     Column {
                         Text(
-                            text = "卡面工坊",
+                            text = "卡面工坊·一加适配",
                             style = MiuixTheme.textStyles.headline2,
                             fontWeight = FontWeight.Bold,
                             color = MiuixTheme.colorScheme.onSurface,
                         )
                         Text(
-                            text = "v$version · 内部 ${com.dsh.miuix.cardface.core.BuildInfo.INTERNAL_VERSION} · Miuix 重制版",
+                            text = "v$version · 内部 ${com.dsh.miuix.cardface.core.BuildInfo.INTERNAL_VERSION} · Miuix 一加适配版",
                             style = MiuixTheme.textStyles.footnote1,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
@@ -329,21 +329,22 @@ fun AboutScreen(
                 }
                 Spacer(Modifier.height(14.dp))
                 Text(
-                    text = "把小米智能卡里千篇一律的卡面换成你喜欢的图片。\n" +
+                    text = "把一加钱包与小米智能卡里的卡面换成你喜欢的图片。\n" +
                         "基于原版「DIY NFC卡面图片」v2.4 重写：界面换成 Miuix（HyperOS 风格），" +
-                        "图片缩放换成 Lanczos3（不再有锯齿），替换图通过 file:// 直接交给卡包加载。",
+                        "图片缩放换成 Lanczos3（不再有锯齿），替换图通过 file:// 直接交给卡包加载。新增一加钱包（com.finshell.wallet）适配，保留原有图库、裁剪和卡面管理流程。",
                     style = MiuixTheme.textStyles.body2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MiniTag("一加钱包适配")
                     MiniTag("LSPosed 模块")
                     MiniTag("Kotlin + Compose")
                     MiniTag("Miuix 0.9.4")
                 }
                 Spacer(Modifier.height(14.dp))
                 Text(
-                    text = "重构者：DeepSeek（AI 编程助手）",
+                    text = "原版重构：DeepSeek（AI 编程助手）\n一加钱包适配：Eta",
                     style = MiuixTheme.textStyles.footnote1,
                     fontWeight = FontWeight.Medium,
                     color = MiuixTheme.colorScheme.primary,
@@ -406,6 +407,7 @@ fun AboutScreen(
                 ) {
                     AboutLine("高质量缩放", "缩放感知 Lanczos3 + 线性光，960×606 输出，细线/文字不再锯齿。")
                     AboutLine("替换方式", "替换图复制到卡包私有目录后以 file:// 加载（复制步骤需要 root）。")
+                    AboutLine("一加钱包", "基于 com.finshell.wallet 5.52.0 适配，支持卡面采集、自定义图片映射与同步。")
                     AboutLine("小米智能卡", "在 Xiaomi 15 Pro / HyperOS（LSPosed 2.2.1）上真机验证通过。")
                     AboutLine("外观可调", "澎湃蓝 / 动态取色 / 8 个预设色 / 深色模式 / 过渡动画。")
                     AboutLine("演示模式", "没装卡包也能完整体验选图、裁剪、卡面标志流程。")
@@ -424,7 +426,7 @@ fun AboutScreen(
                     cornerRadius = 20.dp,
                     insideMargin = PaddingValues(20.dp),
                 ) {
-                    AboutLine("本应用", "卡面工坊 · Miuix 重制版，以 GPL-3.0 许可证开源发布。")
+                    AboutLine("本应用", "卡面工坊 · Miuix 一加适配版，基于原项目修改，以 GPL-3.0 许可证开源发布。")
                     AboutLine(
                         "原版项目",
                         "「DIY NFC卡面图片」v2.4，作者 zhizi42，GPL-3.0；" +

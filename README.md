@@ -1,3 +1,41 @@
+# 卡面工坊 · 一加钱包适配版
+
+基于 [MiamBao/cardface-miuix](https://github.com/MiamBao/cardface-miuix) 的 Fork，保留原项目的 Miuix 界面、图库、裁剪、Lanczos3 图像管线及小米智能卡支持。
+
+## 一加钱包适配
+
+- 目标钱包：`com.finshell.wallet`，基于 **5.52.0** 版本分析适配。
+- 适配版包名：`io.github.miambao.cardface.oneplus`，与上游原版共存。
+- 当前版本：`1.0.5-oneplus.2`（versionCode `17`）。
+- 采集 `NfcCard`、`NfcCardDetail` 等卡片模型中的原始卡面 URL，接入原项目的编辑、图片映射与私有目录同步流程。
+- 更新关于页和使用说明，保留上游署名及 GPL-3.0 许可证。
+
+### 使用
+
+1. 安装适配版，在 LSPosed 中启用“卡面工坊·一加适配”。
+2. 一加设备选择作用域 **钱包（com.finshell.wallet）**；小米设备选择 **小米智能卡**。
+3. 重启钱包并浏览卡面，再回到工坊选择图片、裁剪、保存并应用。
+
+### 验证状态
+
+已完成 APK 构建、安装版本核对及应用启动检查；39 项应用测试和 21 项图像管线测试通过。钱包内实际注入及换图效果仍待真机验证，其他钱包版本兼容性待验证。
+
+### 构建适配版
+
+Android SDK Platform 37.0、Build Tools 37.0.0，Gradle Wrapper 9.5.1，AGP 9.3.1，Kotlin 2.4.20。配置 `local.properties` 中的 `sdk.dir` 后运行：
+
+```sh
+./gradlew :app:assembleDebug :app:testDebugUnitTest :imaging:test
+```
+
+手机 ARM/chroot 环境如需自定义 AAPT2，可通过本机的 Gradle 属性设置 `android.aapt2FromMavenOverride`；仓库不硬编码本机工具路径。图像对比测试需要可用的 Java AWT 字体库。
+
+原项目：MiamBao；原版 DIY NFC：zhizi42；原版重构署名按上游保留；一加钱包适配：Eta。
+
+---
+
+## 上游项目说明
+
 <p align="center">
   <img src="docs/icon.png" width="112" alt="卡面工坊"/>
 </p>

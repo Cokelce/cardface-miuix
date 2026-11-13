@@ -156,7 +156,7 @@ class UrlMapperTest {
         val url = "https://cdn.example.com/card/big.png"
         val result = UrlMapper.map(url, env(mappings = mapOf(url to "card-20260101-120000.png")))
         assertEquals(
-            "content://com.dsh.miuix.cardface.images/images/card-20260101-120000.png",
+            "content://io.github.miambao.cardface.oneplus.images/images/card-20260101-120000.png",
             result.url,
         )
         assertNull("默认不需要复制文件", result.copy)

@@ -27,7 +27,7 @@ class HookEngine(
     private val settingsRepo = SettingsRepository(module)
     private val locator = MethodLocator(osType, classLoader, appInfo)
 
-    private val walletPackage: String = MethodLocator.MIUI_PACKAGE
+    private val walletPackage: String = appInfo.packageName
 
     private val walletDataDir: String = appInfo.dataDir ?: "/data/data/$walletPackage"
 
@@ -193,6 +193,10 @@ class HookEngine(
     }
 
     private fun installAutoHooks(settings: HookSettings) {
+        if (osType == MethodLocator.OS_ONEPLUS) {
+            installOnePlusHooks()
+            return
+        }
         val slots = ArrayList<Int>()
         slots.add(MethodLocator.SLOT_URL_FROM_ARG)
         slots.add(MethodLocator.SLOT_REPLACE_ARG)
@@ -215,6 +219,49 @@ class HookEngine(
             val (loadUrlFromArg, replaceUrlToArg) = flagsForSlot(slot)
             install(method, label = "slot=$slot", loadUrlFromArg, replaceUrlToArg, trackNewUrls = true)
         }
+    }
+
+    /** OnePlus/ColorOS 5.52.0: capture original card URLs and reuse the full editor/map pipeline. */
+    private fun installOnePlusHooks() {
+        val targets = listOf(
+            "com.nearme.wallet.db.NfcCard" to "getCardImg",
+            "com.nearme.wallet.db.NfcCardDetail" to "getCardImg",
+            "com.nearme.wallet.db.NfcCard" to "getNewCardImg",
+            "com.nearme.common.domain.rsp.PayCardInfo" to "getCardImg",
+            "com.nearme.pay.domain.rsp.CardDetailRspVo" to "getCardImg",
+            "com.nearme.nfc.domain.transit.rsp.CardDetailRsp" to "getCardImg",
+            "com.nearme.nfc.domain.transit.rsp.CardIndexDTO" to "getCardImg",
+            "com.nearme.nfc.domain.door.rsp.SchoolCardDetailRsp" to "getCardImg",
+        )
+        for ((name, getter) in targets) {
+            try {
+                val method = classLoader.loadClass(name).getDeclaredMethod(getter)
+                if (method.returnType != String::class.java) continue
+                install(method, "oneplus:card-url", false, false, true)
+            } catch (t: Throwable) {
+                XLog.w("optional OnePlus getter unavailable: $name#$getter", t)
+            }
+        }
+        // Exact-URL mapping only: no global test replacement or unrelated image capture.
+        try {
+            val imageView = classLoader.loadClass("com.finshell.finui.widget.imageview.CircleNetworkImageView")
+            for (method in imageView.declaredMethods.filter {
+                it.name in setOf("g1", "i1") && it.parameterCount >= 3 && it.parameterTypes[0] == String::class.java
+            }) {
+                module.hook(method).intercept(object : XposedInterface.Hooker {
+                    override fun intercept(chain: XposedInterface.Chain): Any? {
+                        val url = chain.getArg(0) as? String ?: return chain.proceed()
+                        if (UrlMapper.lookupMapping(url, settingsRepo.mappings()) == null) return chain.proceed()
+                        val replacement = replaceUrl(url, false)
+                        if (replacement.isEmpty()) return chain.proceed()
+                        val args = Array<Any?>(method.parameterCount) { chain.getArg(it) }
+                        args[0] = replacement
+                        return chain.proceed(args)
+                    }
+                })
+                installedCount++
+            }
+        } catch (t: Throwable) { XLog.w("optional OnePlus image loader unavailable", t) }
     }
 
     /**
@@ -367,7 +414,9 @@ class HookEngine(
 
     private fun copyToWallet(copy: UrlMapper.CopyRequest): Boolean {
         if (rootDenied) return false
-        val source = "$moduleDataDir/files/images/${copy.localName}"
+        val images = "$moduleDataDir/files/images/${copy.localName}"
+        val applied = "$moduleDataDir/files/applied/${copy.localName}"
+        val source = if (File(applied).isFile) applied else images
         val result = RootShell.copyIntoDir(source, walletImagesDir, copy.localName, timeoutMs = 5000)
         if (result.ok) return true
         // 兼容模式的复制由卡包进程触发 root 请求很不友好；失败一次后就本进程内不再重试，

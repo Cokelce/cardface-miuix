@@ -40,6 +40,7 @@ data class GalleryImage(val file: File) {
 }
 
 enum class WalletKind(val packageName: String, val label: String) {
+    ONEPLUS("com.finshell.wallet", "一加钱包"),
     MIUI("com.miui.tsmclient", "小米智能卡"),
 }
 

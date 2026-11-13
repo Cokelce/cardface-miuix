@@ -407,7 +407,7 @@ private fun HeroStatusCard(
                             color = summaryColor,
                         )
                         Text(
-                            text = "LSPosed · 小米智能卡",
+                            text = "LSPosed · 一加钱包 / 小米智能卡",
                             fontSize = 13.sp,
                             color = summaryColor,
                         )
@@ -556,7 +556,7 @@ private fun EmptyHomeCard(
         NumberedStep(
             index = 1,
             title = "在 LSPosed 里启用「卡面工坊」",
-            description = "勾选作用域：小米智能卡",
+            description = "勾选作用域：本机钱包（一加钱包 / 小米智能卡）",
             done = status.lsposedInstalled && status.moduleActivated,
         )
         NumberedStep(

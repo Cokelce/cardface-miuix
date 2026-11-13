@@ -69,6 +69,11 @@ object RootShell {
             append(" && { [ -f ").append(quote(dest)).append(" ] || cp ").append(quote(sourcePath))
             append(' ').append(quote(dest)).append("; }")
             append(" && chmod ").append(mode).append(' ').append(quote(dest))
+            if (destDir.contains("/data/data/")) {
+                val pkgDir = destDir.substringBefore("/files/")
+                append(" && chown $(stat -c %u:%g ").append(quote(pkgDir)).append(") ").append(quote(dest))
+                append(" && restorecon ").append(quote(dest))
+            }
         }
         return runSu(command, timeoutMs)
     }
