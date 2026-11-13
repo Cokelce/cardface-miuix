@@ -4,7 +4,13 @@
 
 ## 下载
 
-[下载当前适配版 APK](https://github.com/Cokelce/cardface-miuix/releases/download/v1.0.5-oneplus.9/CardFace-1.0.5-oneplus.9.apk) · [全部版本](https://github.com/Cokelce/cardface-miuix/releases)
+[下载当前适配版 APK](https://github.com/Cokelce/cardface-miuix/releases/download/v1.0.5-oneplus.10/CardFace-1.0.5-oneplus.10.apk) · [全部版本](https://github.com/Cokelce/cardface-miuix/releases)
+
+### oneplus.10 热修复
+
+修复 Root 已授权仍在保存/同步时误报失败的问题：当前挂载环境下 `restorecon /proc/1/root/...` 的规范路径解析失败，复制已完成却返回错误。改为继承目标应用目录的准确 SELinux 标签，并读回核对属主、标签与文件哈希，不关闭 SELinux、不放宽权限。
+
+真机确认不加标志及京津冀、上海、泉城通、银川四种标志输出均可合成保存并解码；标志不是本次保存失败的触发根因。新增真实快照同步及 `/proc/1/root` 路径首拷/重复/更换内容回归，17 项真机测试通过（含显式启用的当前配置快照校验）；151 项应用测试、21 项图像测试通过。
 
 ### 本次更新（oneplus.9 稳定性修复）
 
@@ -25,7 +31,7 @@
 
 - 目标钱包：`com.finshell.wallet`，基于 **5.52.0** 版本分析适配。
 - 适配版包名：`io.github.miambao.cardface.oneplus`，与上游原版共存。
-- 当前版本：`1.0.5-oneplus.9`（versionCode `24`）。
+- 当前版本：`1.0.5-oneplus.10`（versionCode `25`）。
 - 采集 `NfcCard`、`NfcCardDetail` 等卡片模型中的原始卡面 URL，接入原项目的编辑、图片映射与私有目录同步流程。
 - 更新关于页和使用说明，保留上游署名及 GPL-3.0 许可证。
 

@@ -231,4 +231,49 @@ class DeviceRegressionTest {
         } finally {ctx.close()}
     }
 
+    @Test fun diagnoseCurrentSnapshotWithoutChangingMappings() {
+        org.junit.Assume.assumeTrue("Explicit read-only-config snapshot verification only",
+            InstrumentationRegistry.getArguments().getString("verifyCurrentSnapshot") == "true")
+        org.junit.Assume.assumeTrue(RootShell.isAvailable())
+        val ctx=target
+        val result=CardSync.writeMapSnapshotDetailed(ctx,AppPrefs(ctx, false))
+        println("SNAPSHOT_DIAG rc=${result.exitCode} timeout=${result.timedOut} error=${result.stderr.take(1200)}")
+        assertTrue("snapshot failure: rc=${result.exitCode} ${result.stderr}",result.ok)
+    }
+    @Test fun allLogoCompositionsSaveAndValidate() {
+        val ctx=Isolated(target)
+        try {
+            val src=Bitmap.createBitmap(960,606,Bitmap.Config.ARGB_8888)
+            src.eraseColor(android.graphics.Color.LTGRAY)
+            val store=ImageStore(ctx)
+            for (logo in listOf(null,"jingjinji","shanghai","qvanchengtong","yinchuan")) {
+                val result=BitmapPipeline.buildCard(target,src,opts=BitmapPipeline.Options(logoAsset=logo))
+                val file=store.saveApplied(result,"logo-${logo ?: "none"}.png")
+                assertTrue("logo=$logo",ImageValidation.valid(file))
+                result.recycle()
+            }
+            src.recycle()
+        } finally {ctx.close()}
+    }
+
+    @Test fun procRootWalletPathCopiesAndRecopiesWithExactLabel() {
+        org.junit.Assume.assumeTrue(RootShell.isAvailable())
+        val id=java.util.UUID.randomUUID().toString()
+        val host="/data/local/tmp/cardface-proc-$id"
+        val path="/proc/1/root$host/data/data/mock.wallet"
+        val source=File(target.cacheDir,"qa-proc-source-$id.png").apply {writeText("complete test bytes")}
+        fun q(s:String)="'"+s.replace("'","'\\''")+"'"
+        try {
+            val uid=android.os.Process.myUid()
+            assertTrue(RootShell.exec("mkdir -p ${q(path)}/files && chown $uid:$uid ${q(path)} ${q(path)}/files").ok)
+            for (iteration in 0..2) {
+                if (iteration==2) source.writeText("changed source content")
+                val result=RootShell.copyIntoDir(source.absolutePath,"$path/files/images","copy.png")
+                assertTrue("proc copy $iteration rc=${result.exitCode} ${result.stderr}",result.ok)
+                val check=RootShell.exec("[ \"\$(sha256sum ${q(source.absolutePath)} | cut -d ' ' -f 1)\" = \"\$(sha256sum ${q(path)}/files/images/copy.png | cut -d ' ' -f 1)\" ] && [ \"\$(stat -c %C ${q(path)})\" = \"\$(stat -c %C ${q(path)}/files/images/copy.png)\" ]")
+                assertTrue("proc copied bytes/label $iteration ${check.stderr}",check.ok)
+            }
+        } finally {RootShell.exec("rm -rf ${q(host)}");source.delete()}
+    }
+
 }

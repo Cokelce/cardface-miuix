@@ -31,7 +31,8 @@ object AtomicFileCopy {
                 actual=${'$'}(sha256sum "${'$'}dst"); actual=${'$'}{actual%% *}
                 if [ "${'$'}expected" = "${'$'}actual" ]; then
                     chmod $mode "${'$'}dst"
-                    ${if (walletRoot != null) "chown ${'$'}(stat -c %u:%g ${q(walletRoot)}) \"${'$'}dst\" && restorecon \"${'$'}dst\" || exit 18" else ":"}
+                    ${if (walletRoot != null) "chown \"${'$'}owner\" \"${'$'}dst\" && chcon \"${'$'}label\" \"${'$'}dst\" || exit 18" else ":"}
+                    ${if (walletRoot != null) "[ \"${'$'}(stat -c %u:%g \"${'$'}dst\")\" = \"${'$'}owner\" ] && [ \"${'$'}(stat -c %C \"${'$'}dst\")\" = \"${'$'}label\" ] || exit 19" else ":"}
                     exit 0
                 fi
             fi
@@ -45,7 +46,7 @@ object AtomicFileCopy {
             $prepare
             mv -f "${'$'}tmp" "${'$'}dst"
             trap - EXIT
-            ${if (walletRoot != null) "restorecon \"${'$'}dst\" || exit 18" else ":"}
+            ${if (walletRoot != null) "[ \"${'$'}(stat -c %u:%g \"${'$'}dst\")\" = \"${'$'}owner\" ] && [ \"${'$'}(stat -c %C \"${'$'}dst\")\" = \"${'$'}label\" ] || exit 19" else ":"}
             final=${'$'}(sha256sum "${'$'}dst"); final=${'$'}{final%% *}
             [ "${'$'}final" = "${'$'}expected" ] || exit 13
         """.trimIndent()

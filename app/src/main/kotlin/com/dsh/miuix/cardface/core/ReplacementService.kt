@@ -6,7 +6,11 @@ import android.content.Context
 object ReplacementService {
     fun apply(context: Context, prefs: AppPrefs, store: ImageStore, url: String, value: String?) =
         applyWithSync(prefs, store, url, value,
-            { CardSync.copyImage(context, store, it) }, { CardSync.writeMapSnapshot(context, prefs) })
+            { CardSync.copyImage(context, store, it) }, {
+                val result = CardSync.writeMapSnapshotDetailed(context, prefs)
+                if (!result.ok) android.util.Log.w("CardFaceSync", "snapshot rc=${result.exitCode} ${result.stderr.take(1000)}")
+                result.ok
+            })
 
     @Synchronized
     internal fun applyWithSync(prefs: AppPrefs, store: ImageStore, url: String, value: String?,

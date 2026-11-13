@@ -13,8 +13,11 @@ object CardSync {
     const val MAP_SNAPSHOT_NAME = "cardface.map"
 
     @Synchronized
-    fun writeMapSnapshot(context: android.content.Context, prefs: AppPrefs): Boolean {
-        val kind = WalletApps.primary(context) ?: return false
+    fun writeMapSnapshot(context: android.content.Context, prefs: AppPrefs): Boolean = writeMapSnapshotDetailed(context, prefs).ok
+
+    @Synchronized
+    fun writeMapSnapshotDetailed(context: android.content.Context, prefs: AppPrefs): RootShell.Result {
+        val kind = WalletApps.primary(context) ?: return RootShell.Result(-1, "", "未检测到钱包")
         var tmp: java.io.File? = null
         return try {
             val raw = context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE).all
@@ -26,8 +29,8 @@ object CardSync {
             tmp = file
             java.io.FileOutputStream(file).use { it.write(text.toByteArray(Charsets.UTF_8)); it.fd.sync() }
             val dir = "/proc/1/root/data/data/${kind.packageName}/files"
-            RootShell.copyIntoDir(file.absolutePath, dir, MAP_SNAPSHOT_NAME, timeoutMs = 10000).ok
-        } catch (_: Throwable) { false }
+            RootShell.copyIntoDir(file.absolutePath, dir, MAP_SNAPSHOT_NAME, timeoutMs = 10000)
+        } catch (t: Throwable) { RootShell.Result(-1, "", "${t.javaClass.simpleName}: ${t.message}") }
         finally { tmp?.delete() }
     }
 
