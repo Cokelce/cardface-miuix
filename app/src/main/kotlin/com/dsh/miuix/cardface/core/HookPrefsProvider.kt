@@ -34,7 +34,7 @@ object HookPrefsProtocol {
     const val AUTHORITY = "io.github.miambao.cardface.oneplus.preference"
 
     /** 暴露给卡包进程的 prefs 分组。 */
-    val PREF_NAMES = arrayOf("settings", "card_urls")
+    val PREF_NAMES = arrayOf("settings", "card_urls", "detected_names")
 
     const val COLUMN_KEY = "key"
     const val COLUMN_TYPE = "type"

@@ -2,11 +2,23 @@
 
 基于 [MiamBao/cardface-miuix](https://github.com/MiamBao/cardface-miuix) 的 Fork，保留原项目的 Miuix 界面、图库、裁剪、Lanczos3 图像管线及小米智能卡支持。
 
+## 下载
+
+[下载当前适配版 APK](https://github.com/Cokelce/cardface-miuix/releases/download/v1.0.5-oneplus.6/CardFace-1.0.5-oneplus.6.apk) · [全部版本](https://github.com/Cokelce/cardface-miuix/releases)
+
+### 本次更新
+
+- 修复网络替换图片被重复采集后显示“未替换”的问题，统一首页和 Hook 的映射查询。
+- 首页保持简约双列；编辑页增加“原图 → 替换后”预览。
+- 采集一加钱包真实卡名；显示顺序为手动名称、钱包名称、图片文件名。
+- 关于页清理指定署名，项目入口链接改为本仓库。
+- 当前应用内更新检查仍使用上游地址，后续更新请先通过此 Releases 页面获取。
+
 ## 一加钱包适配
 
 - 目标钱包：`com.finshell.wallet`，基于 **5.52.0** 版本分析适配。
 - 适配版包名：`io.github.miambao.cardface.oneplus`，与上游原版共存。
-- 当前版本：`1.0.5-oneplus.2`（versionCode `17`）。
+- 当前版本：`1.0.5-oneplus.6`（versionCode `21`）。
 - 采集 `NfcCard`、`NfcCardDetail` 等卡片模型中的原始卡面 URL，接入原项目的编辑、图片映射与私有目录同步流程。
 - 更新关于页和使用说明，保留上游署名及 GPL-3.0 许可证。
 
@@ -18,7 +30,7 @@
 
 ### 验证状态
 
-已完成 APK 构建、安装版本核对及应用启动检查；39 项应用测试和 21 项图像管线测试通过。钱包内实际注入及换图效果仍待真机验证，其他钱包版本兼容性待验证。
+已完成 APK 构建、安装版本核对及应用启动检查；61 项应用测试和 21 项图像管线测试通过。钱包内实际注入及换图效果仍待真机验证，其他钱包版本兼容性待验证。
 
 ### 构建适配版
 

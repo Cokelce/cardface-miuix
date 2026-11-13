@@ -86,7 +86,8 @@ fun EditorScreen(
     val animationsEnabled = LocalAnimationsEnabled.current
     val revision = prefs.revision
 
-    val replacement = remember(revision) { prefs.replacementFor(url) }
+    val replacement = remember(url, revision) { prefs.replacementFor(url) }
+    var loadedSavedBitmap by remember(url) { mutableStateOf<android.graphics.Bitmap?>(null) }
 
     var showPasteDialog by remember { mutableStateOf(false) }
     var showGallerySheet by remember { mutableStateOf(false) }
@@ -99,7 +100,8 @@ fun EditorScreen(
     LaunchedEffect(url) {
         val current = prefs.replacementFor(url)
         if (draft.localBitmap == null && current != null && !DeviceBridge.isRemote(current)) {
-            draft.localBitmap = store.load(current)
+            loadedSavedBitmap = store.load(current)
+            draft.localBitmap = loadedSavedBitmap
             draft.localCrop = null
         }
     }
@@ -122,6 +124,10 @@ fun EditorScreen(
             )
         }
     }
+
+    val hasPendingPreview = draft.localBitmap != null &&
+        (draft.localBitmap !== loadedSavedBitmap || draft.localCrop != null ||
+            draft.logoAsset != null || !draft.roundCorners)
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) onStartCrop(uri)
@@ -215,74 +221,18 @@ fun EditorScreen(
                     cornerRadius = 20.dp,
                     insideMargin = PaddingValues(10.dp),
                 ) {
-                    val localPreview = previewBitmap
-                    val model_ = when {
-                        localPreview != null -> null
-                        replacement.isNullOrBlank() -> url
+                    val localPreview = if (hasPendingPreview) previewBitmap else null
+                    val replacementModel = when {
+                        replacement.isNullOrBlank() -> null
                         DeviceBridge.isRemote(replacement) -> replacement
-                        else -> store.fileUri(replacement!!)
+                        else -> store.fileUri(replacement)
                     }
-                    val previewState = EditorPreviewState(localPreview, model_)
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(CardImaging.TARGET_RATIO)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(MiuixTheme.colorScheme.secondaryContainer),
-                    ) {
-                        Crossfade(
-                            targetState = previewState,
-                            animationSpec = if (animationsEnabled) tween(220) else snap(),
-                            label = "editorPreview",
-                        ) { state ->
-                            when {
-                                state.bitmap != null -> androidx.compose.foundation.Image(
-                                    bitmap = state.bitmap.asImageBitmap(),
-                                    contentDescription = "替换预览",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop,
-                                )
-
-                                !state.model.isNullOrBlank() -> AppAsyncImage(
-                                    model = state.model,
-                                    contentDescription = "当前预览",
-                                    modifier = Modifier.fillMaxSize(),
-                                    backgroundBrush = cardThumbnailGradient(),
-                                )
-
-                                else -> Icon(
-                                    imageVector = MiuixIcons.Photos,
-                                    contentDescription = null,
-                                    tint = MiuixTheme.colorScheme.onSurfaceContainerVariant,
-                                    modifier = Modifier
-                                        .align(Alignment.Center)
-                                        .size(40.dp),
-                                )
-                            }
-                        }
-                        val pill = when {
-                            localPreview != null -> "待保存"
-                            replacement.isNullOrBlank() -> "原图"
-                            DeviceBridge.isRemote(replacement) -> "网络图"
-                            else -> "已替换"
-                        }
-                        StatusPill(
-                            text = pill,
-                            containerColor = if (localPreview != null || !replacement.isNullOrBlank()) {
-                                MiuixTheme.colorScheme.primary
-                            } else {
-                                MiuixTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                            },
-                            contentColor = if (localPreview != null || !replacement.isNullOrBlank()) {
-                                MiuixTheme.colorScheme.onPrimary
-                            } else {
-                                MiuixTheme.colorScheme.surface
-                            },
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(8.dp),
-                        )
-                    }
+                    CardComparisonPreview(
+                        originalUrl = url,
+                        replacementModel = replacementModel,
+                        previewBitmap = localPreview,
+                        pending = hasPendingPreview,
+                    )
                 }
             }
 
@@ -290,7 +240,7 @@ fun EditorScreen(
                 Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) {
                     Text(
                         text = when {
-                            draft.localBitmap != null -> "当前效果：待保存（裁剪 + 标志 + 圆角已就绪）"
+                            hasPendingPreview -> "当前效果：待保存（裁剪 + 标志 + 圆角已就绪）"
                             replacement.isNullOrBlank() -> "当前效果：原图（还没有替换）"
                             DeviceBridge.isRemote(replacement) -> "当前效果：网络地址替换"
                             else -> "当前效果：已替换为图库图片 $replacement"

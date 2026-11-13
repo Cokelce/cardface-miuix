@@ -171,6 +171,16 @@ class AppPrefs(context: Context) {
     private val names: android.content.SharedPreferences =
         context.getSharedPreferences("card_names", android.content.Context.MODE_PRIVATE)
 
+    private val detectedNames: SharedPreferences =
+        appContext.getSharedPreferences("detected_names", Context.MODE_PRIVATE)
+
+    fun detectedName(url: String): String? {
+        val all = detectedNames.all.mapNotNull { (key, value) ->
+            CardNameResolver.clean(value as? String)?.let { key to it }
+        }.toMap()
+        return com.dsh.miuix.cardface.xposed.UrlMapper.lookupMapping(url, all)
+    }
+
     fun customName(url: String): String? = names.getString(url, null)?.takeIf { it.isNotBlank() }
 
     fun setCustomName(url: String, name: String?) {
@@ -182,19 +192,13 @@ class AppPrefs(context: Context) {
 
     fun cardFaces(): List<CardFaceItem> {
         val black = blacklistedUrls()
-        val replacementNames = mappedImageNames().toSet()
+        val mappings = mappingPairs()
         return allCardUrls()
             .filterNot { black.contains(it) }
-            // 卡包加载我们复制进去的替换图时也会产生 file:// URL，这不是真实卡面，过滤掉。
-            .filterNot { url ->
-                val name = url.substringAfterLast('/')
-                url.contains("com.dsh.miuix.cardface") ||
-                    replacementNames.contains(name) ||
-                    name.matches(Regex("^card-\\d{8}-\\d{6}\\.png$"))
-            }
+            .filterNot { com.dsh.miuix.cardface.xposed.UrlMapper.isReplacementAsset(it, mappings) }
             // 图标 / 横幅 / 广告 / 二维码等明显不是卡面的图，不展示。
             .filterNot { isJunkImageUrl(it) }
-            .map { CardFaceItem(url = it, replacement = replacementFor(it), customName = customName(it)) }
+            .map { CardFaceItem(url = it, replacement = replacementFor(it), customName = customName(it), detectedName = detectedName(it)) }
     }
 
     /** 卡包里大量非卡面图片（图标、横幅、广告）会被 hook 抓到，这里统一过滤。 */
@@ -206,13 +210,9 @@ class AppPrefs(context: Context) {
     /** 清理历史遗留的杂图 URL；返回清掉的数量。 */
     fun sanitizeCardUrls(): Int {
         val before = allCardUrls()
-        val replacementNames = mappedImageNames().toSet()
+        val mappings = mappingPairs()
         val kept = before.filterNot { url ->
-            val name = url.substringAfterLast('/')
-            isJunkImageUrl(url) ||
-                url.contains("com.dsh.miuix.cardface") ||
-                replacementNames.contains(name) ||
-                name.matches(Regex("^card-\\d{8}-\\d{6}\\.png$"))
+            isJunkImageUrl(url) || com.dsh.miuix.cardface.xposed.UrlMapper.isReplacementAsset(url, mappings)
         }
         if (kept.size == before.size) return 0
         urls.edit().putStringSet(KEY_ALL_CARD_URLS, kept.toSet()).apply()
@@ -223,14 +223,27 @@ class AppPrefs(context: Context) {
     /** 黑名单里的卡面（用于黑名单页展示）。 */
     fun blacklistedCardFaces(): List<CardFaceItem> =
         blacklistedUrls().sorted().map {
-            CardFaceItem(url = it, replacement = replacementFor(it), customName = customName(it))
+            CardFaceItem(url = it, replacement = replacementFor(it), customName = customName(it), detectedName = detectedName(it))
         }
 
     fun replacementFor(url: String): String? =
-        settings.getString(url, "")?.takeIf { it.isNotBlank() }
+        com.dsh.miuix.cardface.xposed.UrlMapper.lookupMapping(url, mappingPairs())
 
     fun setReplacement(url: String, value: String?) {
         val editor = settings.edit()
+        val mappings = mappingPairs()
+        val current = com.dsh.miuix.cardface.xposed.UrlMapper.lookupMapping(url, mappings)
+        val normalized = com.dsh.miuix.cardface.xposed.UrlMapper.normalizedUrl(url)
+        val matchedKeys = mappings.keys.filter {
+            com.dsh.miuix.cardface.xposed.UrlMapper.normalizedUrl(it) == normalized
+        }.ifEmpty {
+            // Mirror the unique-filename fallback used by the hook, without touching unrelated cards.
+            mappings.keys.filter { it.substringBefore('?').substringAfterLast('/') ==
+                url.substringBefore('?').substringAfterLast('/') }.takeIf { it.size == 1 }.orEmpty()
+        }
+        if (current != null) matchedKeys.forEach { key ->
+            if (value.isNullOrBlank()) editor.remove(key) else editor.putString(key, value)
+        }
         if (value.isNullOrBlank()) editor.remove(url) else editor.putString(url, value)
         editor.apply()
         touch()

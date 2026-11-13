@@ -54,6 +54,44 @@ class SettingsRepository(private val module: XposedModule) {
 
     private var observerRegistered = false
 
+    private val pendingNames = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val savedNames = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val nameFlushQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val nameWorker = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(task, "cardface-names").apply { isDaemon = true }
+    }
+
+    fun reportCardName(url: String, rawName: String) {
+        val name = com.dsh.miuix.cardface.core.CardNameResolver.clean(rawName) ?: return
+        if (savedNames[url] == name) return
+        if (pendingNames.size >= 512 && !pendingNames.containsKey(url)) return
+        pendingNames[url] = name
+        flushCardNames()
+    }
+
+    private fun flushCardNames() {
+        if (provider == null || pendingNames.isEmpty() || !nameFlushQueued.compareAndSet(false, true)) return
+        nameWorker.execute {
+            var success = false
+            try {
+                val p = provider ?: return@execute
+                val batch = pendingNames.toMap()
+                val rows = batch.mapKeys { (key, _) -> key to com.dsh.miuix.cardface.core.HookPrefsProtocol.TYPE_STRING }
+                if (p.bulkWrite("detected_names", rows)) {
+                    success = true
+                    batch.forEach { (url, name) ->
+                        savedNames[url] = name
+                        pendingNames.remove(url, name)
+                    }
+                }
+            } catch (t: Throwable) { XLog.w("card name report failed", t) }
+            finally {
+                nameFlushQueued.set(false)
+                if (success && pendingNames.isNotEmpty()) flushCardNames()
+            }
+        }
+    }
+
     // ---------- 初始化 ----------
 
     fun init() {
@@ -78,6 +116,7 @@ class SettingsRepository(private val module: XposedModule) {
         loadSnapshot()
         val p = ProviderPrefs(this.context!!)
         provider = p
+        flushCardNames()
         registerObserver()
         refresh(force = true)
         XLog.i("hook context ready, provider prefs readable=$providerReadable")

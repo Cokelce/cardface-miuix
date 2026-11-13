@@ -80,6 +80,19 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun CardFaceApp() {
     val context = LocalContext.current
     val model = remember { AppModel(context) }
+    androidx.compose.runtime.DisposableEffect(model) {
+        val resolver = context.contentResolver
+        val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean, uri: android.net.Uri?) {
+                model.prefs.bumpRevision()
+            }
+        }
+        val root = "content://${com.dsh.miuix.cardface.core.HookPrefsProtocol.AUTHORITY}"
+        resolver.registerContentObserver(android.net.Uri.parse("$root/detected_names"), true, observer)
+        resolver.registerContentObserver(android.net.Uri.parse("$root/card_urls"), true, observer)
+        onDispose { resolver.unregisterContentObserver(observer) }
+    }
+
 
     // 只有外观设置变化时才重建主题控制器。
     // 不能用 prefs.revision：hook 上报卡面 / last_hook_at 也会自增，那会在使用过程中反复换主题导致卡顿。

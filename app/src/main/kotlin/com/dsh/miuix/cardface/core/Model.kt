@@ -9,6 +9,7 @@ data class CardFaceItem(
     val replacement: String?,
     /** 用户自定义的卡面名称（为空时用 URL 推导）。 */
     val customName: String? = null,
+    val detectedName: String? = null,
 ) {
     val replaced: Boolean get() = !replacement.isNullOrBlank()
     val replacementIsRemote: Boolean
@@ -16,21 +17,8 @@ data class CardFaceItem(
 
     /** 用于界面展示的短名称：取 URL 最后一段，去掉查询串。 */
     val displayName: String
-        get() {
-            if (!customName.isNullOrBlank()) return customName.trim()
-            val raw = url.substringBefore('?').trimEnd('/').substringAfterLast('/')
-            val decoded = try {
-                java.net.URLDecoder.decode(raw, "UTF-8")
-            } catch (_: Throwable) {
-                raw
-            }
-            return when {
-                decoded.isBlank() -> url
-                // 纯 hash 文件名（32/40 位十六进制）显示成短名
-                decoded.matches(Regex("^[0-9a-fA-F]{24,}$")) -> "卡面 " + decoded.take(8)
-                else -> decoded
-            }
-        }
+        get() = CardNameResolver.displayName(customName, detectedName, url)
+
 }
 
 /** 图库里的一张替换图。 */

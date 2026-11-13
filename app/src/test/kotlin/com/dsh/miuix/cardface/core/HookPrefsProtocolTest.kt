@@ -63,6 +63,6 @@ class HookPrefsProtocolTest {
     @Test
     fun `authority and pref names are fixed`() {
         assertEquals("io.github.miambao.cardface.oneplus.preference", HookPrefsProtocol.AUTHORITY)
-        assertEquals(listOf("settings", "card_urls"), HookPrefsProtocol.PREF_NAMES.toList())
+        assertEquals(listOf("settings", "card_urls", "detected_names"), HookPrefsProtocol.PREF_NAMES.toList())
     }
 }

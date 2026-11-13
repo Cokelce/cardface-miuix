@@ -342,13 +342,7 @@ fun AboutScreen(
                     MiniTag("Kotlin + Compose")
                     MiniTag("Miuix 0.9.4")
                 }
-                Spacer(Modifier.height(14.dp))
-                Text(
-                    text = "原版重构：DeepSeek（AI 编程助手）\n一加钱包适配：Eta",
-                    style = MiuixTheme.textStyles.footnote1,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.primary,
-                )
+
             }
         }
 
@@ -365,8 +359,8 @@ fun AboutScreen(
                 ) {
                     ArrowPreference(
                         title = "项目地址",
-                        summary = "github.com/MiamBao/cardface-miuix",
-                        onClick = { openUrl("https://github.com/MiamBao/cardface-miuix") },
+                        summary = "github.com/Cokelce/cardface-miuix",
+                        onClick = { openUrl("https://github.com/Cokelce/cardface-miuix") },
                     )
                     HorizontalDivider()
                     ArrowPreference(
@@ -451,11 +445,7 @@ fun AboutScreen(
                         "AndroidX / Compose / Coil 3",
                         "Jetpack Compose、Activity Compose、Coil 3 图片加载，Apache-2.0。",
                     )
-                    AboutLine(
-                        "重构者",
-                        "DeepSeek（AI 编程助手）：负责 Miuix 界面重构、卡面 hook 链路、" +
-                            "图像管线与性能优化。",
-                    )
+
                 }
             }
         }

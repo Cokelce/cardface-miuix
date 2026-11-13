@@ -285,7 +285,7 @@ class HookEngine(
         trackNewUrls: Boolean,
     ) {
         try {
-            module.hook(method).intercept(UrlHooker(loadUrlFromArg, replaceUrlToArg, trackNewUrls))
+            module.hook(method).intercept(UrlHooker(loadUrlFromArg, replaceUrlToArg, trackNewUrls, label == "oneplus:card-url"))
             installedCount++
             XLog.i(
                 "hooked ${method.declaringClass.name}#${method.name} ($label, " +
@@ -302,6 +302,7 @@ class HookEngine(
         private val replaceUrlToArg: Boolean,
         /** 是否把这个 URL 记入卡面列表；只有「卡面专用」hook 点才记录，通用 Glide 加载不记。 */
         private val trackNewUrls: Boolean,
+        private val captureCardName: Boolean,
     ) : XposedInterface.Hooker {
 
         override fun intercept(chain: XposedInterface.Chain): Any? {
@@ -332,6 +333,15 @@ class HookEngine(
             // 从返回值读 URL 模式：proceed 的异常保持原样抛出（模块只处理自己的异常）。
             val result = chain.proceed()
             val url = result as? String ?: return result
+            if (captureCardName && url.isNotBlank()) {
+                try {
+                    if (!UrlMapper.isReplacementAsset(url, settingsRepo.mappings())) {
+                        com.dsh.miuix.cardface.core.CardNameResolver.fromCard(chain.thisObject)?.let {
+                            settingsRepo.reportCardName(url, it)
+                        }
+                    }
+                } catch (t: Throwable) { XLog.w("card name capture failed", t) }
+            }
             val replaced = replaceUrl(url, trackNewUrls)
             return if (replaced.isEmpty()) result else replaced
         }
@@ -342,19 +352,21 @@ class HookEngine(
     fun replaceUrl(url: String, trackNew: Boolean = true): String {
         return try {
             val settings = settingsRepo.snapshot()
+            val mappings = settingsRepo.mappings()
+            if (UrlMapper.isReplacementAsset(url, mappings)) return ""
             val env = UrlMapper.Env(
                 isMiui = osType == MethodLocator.OS_MIUI,
                 showAllCards = settings.showAllCards,
                 testMode = settings.testMode,
                 compatMode = settings.compatMode,
                 blacklist = settingsRepo.blacklist(),
-                mappings = settingsRepo.mappings(),
+                mappings = mappings,
                 walletImagesDir = walletImagesDir,
                 existingWalletImages = walletImageNames(),
             )
             val result = UrlMapper.map(url, env)
 
-            if (trackNew && result.trackUrl && !isOwnReplacementUrl(url, settingsRepo.mappings().values)) {
+            if (trackNew && result.trackUrl && !UrlMapper.isReplacementAsset(url, mappings)) {
                 settingsRepo.addCardUrl(url)
             }
 

@@ -117,6 +117,17 @@ object UrlMapper {
         return name.none { it.code < 0x20 }
     }
 
+    /** Replacement URLs belong to the result side, never to the original-card list. */
+    fun isReplacementAsset(url: String, mappings: Map<String, String>): Boolean {
+        if (url.startsWith("content://$IMAGE_AUTHORITY/")) return true
+        if (isHttpUrl(url)) {
+            return mappings.values.any { isHttpUrl(it) && normalizedUrl(it) == normalizedUrl(url) }
+        }
+        val name = url.substringBefore('?').substringAfterLast('/')
+        return mappings.values.any { !isHttpUrl(it) && it == name } ||
+            name.matches(Regex("^card-\\d{8}-\\d{6}\\.png$"))
+    }
+
     /** 是否把 URL 记入卡面列表（小图 / 黑名单不记）。 */
     fun shouldTrack(url: String, env: Env): Boolean {
         if (env.isMiui && !env.showAllCards && isSmallIconUrl(url)) return false
@@ -126,7 +137,7 @@ object UrlMapper {
 
     /** replaceUrl 纯逻辑；空 url 结果表示保留原图。 */
     fun map(url: String, env: Env): Result {
-        if (url.isEmpty()) return Result("", trackUrl = false)
+        if (url.isEmpty() || isReplacementAsset(url, env.mappings)) return Result("", trackUrl = false)
         val track = shouldTrack(url, env)
 
         // 1. 测试模式优先，保证「打开测试模式 -> 一定能看到测试图」。
