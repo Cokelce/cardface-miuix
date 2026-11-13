@@ -4,25 +4,28 @@
 
 ## 下载
 
-[下载当前适配版 APK](https://github.com/Cokelce/cardface-miuix/releases/download/v1.0.5-oneplus.8/CardFace-1.0.5-oneplus.8.apk) · [全部版本](https://github.com/Cokelce/cardface-miuix/releases)
+[下载当前适配版 APK](https://github.com/Cokelce/cardface-miuix/releases/download/v1.0.5-oneplus.9/CardFace-1.0.5-oneplus.9.apk) · [全部版本](https://github.com/Cokelce/cardface-miuix/releases)
 
-### 本次更新（oneplus.8 基线）
+### 本次更新（oneplus.9 稳定性修复）
 
-- 保留 Root 图片同步方案与简约双列首页。
-- 状态区分未设置、待加载、Hook 已命中和同步异常，命中不等于图片渲染成功。
-- 保守整理同图地址变体，保留手动名称。
-- 设置页增加 ZIP 备份恢复、钱包兼容检测和重新同步。
-- 更新下载增加大小、SHA-256、包名、版本和签名校验。
+- 一加钱包模型 Getter 只采集原地址/卡名，返回值不替换；图片展示入口执行替换，避免替换地址进入数据库保存链路。
+- 本地图片与钱包副本先校验，采用临时文件、SHA-256 校验和原子替换；损坏副本可重新同步。
+- 保存/同步失败不再提示已应用；映射快照失败时补偿回滚，旧图片保留。
+- 清空单卡不删除源图片；不同 UUID/不同主机/仅同文件名的独立卡不再被推断为相同卡。
+- 版本化原子映射快照，修复远程空对象和 Provider 故障时的回退；网络图编辑与清空也更新快照。
+- 有明确唯一卡标识时记录其原图地址变化；无明确标识不猜测。历史替换地址仅在来源唯一且已知时于展示层纠正，不改钱包数据库。
 
-### 已知问题
+### 验证范围
 
-此包按现状归档发布。已发现 Getter 替换可能参与钱包持久化、同步失败提示不准确、坏副本未校验、清空映射及快照回退不充分等缺陷，可能表现为卡面失效或恢复原图；修复版本将另行发布，不覆盖本版本资产。
+151 项应用单元测试、21 项图像测试、14 项真机隔离测试通过；本机钱包 5.52.0 已回报新版 8 个采集入口、5 个展示入口，无缺失入口。真实多卡长时间使用和钱包升级场景仍需验证；没有对钱包数据库执行修复或批量改写。旧版本若已将不明来源地址持久化，缺少原始地址时不会自动猜测恢复。
+
+[oneplus.8 修复前基线](https://github.com/Cokelce/cardface-miuix/releases/tag/v1.0.5-oneplus.8) 保留原包与已知问题说明。
 
 ## 一加钱包适配
 
 - 目标钱包：`com.finshell.wallet`，基于 **5.52.0** 版本分析适配。
 - 适配版包名：`io.github.miambao.cardface.oneplus`，与上游原版共存。
-- 当前版本：`1.0.5-oneplus.8`（versionCode `23`）。
+- 当前版本：`1.0.5-oneplus.9`（versionCode `24`）。
 - 采集 `NfcCard`、`NfcCardDetail` 等卡片模型中的原始卡面 URL，接入原项目的编辑、图片映射与私有目录同步流程。
 - 更新关于页和使用说明，保留上游署名及 GPL-3.0 许可证。
 

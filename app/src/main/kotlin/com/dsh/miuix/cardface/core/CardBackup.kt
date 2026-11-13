@@ -82,6 +82,8 @@ object CardBackup {
                 mappingEditor.putString(url, renamed[value] ?: value)
                 savedEditor.putLong(url, now)
             } }
+            mark("settings", "mapping_revision")
+            mappingEditor.putLong("mapping_revision", maxOf(now, prefs.settings.getLong("mapping_revision", 0L) + 1))
             // Files are fully validated and published; each preference file uses an atomic commit.
             require(mappingEditor.commit()) { "写入替换配置失败" }
             require(savedEditor.commit()) { "写入保存时间失败" }

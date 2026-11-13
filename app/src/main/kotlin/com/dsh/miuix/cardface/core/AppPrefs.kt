@@ -23,7 +23,7 @@ enum class SyncMode(val key: String, val label: String) {
     }
 }
 
-class AppPrefs(context: Context) {
+class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
 
     private val appContext = context.applicationContext
     private val rawSettings: SharedPreferences =
@@ -229,29 +229,37 @@ class AppPrefs(context: Context) {
         }
 
     fun replacementFor(url: String): String? =
-        com.dsh.miuix.cardface.xposed.UrlMapper.lookupMapping(url, mappingPairs())
+        MappingPolicy.lookup(url, effectiveMappings())
 
+    fun mutationKeys(url: String, mappings: Map<String, String> = mappingPairs()): Set<String> {
+        val group = sourceGroups().filter { url in it }.flatten().toSet()
+        val matching = mappings.filterKeys { it in group || CardIdentity.key(it) == CardIdentity.key(url) }
+        return if (matching.isNotEmpty() && matching.values.distinct().size == 1) matching.keys + url
+            else MappingPolicy.mutationKeys(url, mappings)
+    }
+
+    @Synchronized
     fun setReplacement(url: String, value: String?) {
+        val before = mappingPairs()
+        val keys = mutationKeys(url, before)
+        val origins = appContext.getSharedPreferences("asset_origins", Context.MODE_PRIVATE)
+        val history = origins.edit()
+        (keys.mapNotNull { key -> before[key]?.let { key to it } } + listOfNotNull(value?.takeIf { it.isNotBlank() }?.let { url to it }))
+            .forEach { (original, asset) ->
+                val key = CardRuntime.fingerprint(asset)
+                history.putStringSet(key, origins.getStringSet(key, emptySet()).orEmpty() + original)
+            }
+        check(history.commit()) { "保存图片来源记录失败" }
+        val now = maxOf(System.currentTimeMillis(), settings.getLong("mapping_revision", 0L) + 1)
         val editor = settings.edit()
-        val mappings = mappingPairs()
-        val current = com.dsh.miuix.cardface.xposed.UrlMapper.lookupMapping(url, mappings)
-        val normalized = com.dsh.miuix.cardface.xposed.UrlMapper.normalizedUrl(url)
-        val matchedKeys = mappings.keys.filter {
-            com.dsh.miuix.cardface.xposed.UrlMapper.normalizedUrl(it) == normalized || CardIdentity.key(it) == CardIdentity.key(url)
-        }.ifEmpty {
-            // Mirror the unique-filename fallback used by the hook, without touching unrelated cards.
-            mappings.keys.filter { it.substringBefore('?').substringAfterLast('/') ==
-                url.substringBefore('?').substringAfterLast('/') }.takeIf { it.size == 1 }.orEmpty()
-        }
-        if (current != null) matchedKeys.forEach { key ->
-            if (value.isNullOrBlank()) editor.remove(key) else editor.putString(key, value)
-        }
-        if (value.isNullOrBlank()) editor.remove(url) else editor.putString(url, value)
-        editor.apply()
+        keys.forEach { key -> if (value.isNullOrBlank()) editor.remove(key) else editor.putString(key, value) }
+        editor.putLong("mapping_revision", now)
+        check(editor.commit()) { "保存替换配置失败" }
         val meta = appContext.getSharedPreferences("saved_meta", Context.MODE_PRIVATE).edit()
-        (matchedKeys + url).forEach { meta.putLong(it, System.currentTimeMillis()) }
-        meta.apply()
+        keys.forEach { meta.putLong(it, now) }
+        check(meta.commit()) { "保存时间写入失败" }
         touch()
+        if (syncSnapshots) SnapshotSync.request(appContext)
     }
 
     /** 追加卡面 URL（供演示数据/测试使用；hook 上报走的是 provider 写回）。 */
@@ -285,6 +293,16 @@ class AppPrefs(context: Context) {
         }
         return out
     }
+
+    private fun sourceGroups(): List<Set<String>> {
+        val raw = appContext.getSharedPreferences("card_sources", Context.MODE_PRIVATE).all.values
+        return raw.mapNotNull { value -> runCatching {
+            val array = org.json.JSONArray(value as String)
+            (0 until array.length()).map { array.getString(it) }.toSet()
+        }.getOrNull() }
+    }
+
+    fun effectiveMappings(): Map<String, String> = CardSourceIndex.expand(mappingPairs(), sourceGroups())
 
     fun savedAt(url: String): Long = appContext.getSharedPreferences("saved_meta", Context.MODE_PRIVATE)
         .all.entries.filter { CardIdentity.key(it.key) == CardIdentity.key(url) }
@@ -331,15 +349,11 @@ class AppPrefs(context: Context) {
     }
 
     private fun blackMarkClear() {
-        // 清空所有卡面时同时清掉映射（settings 里除设置键以外的 URL 键）
         val editor = settings.edit()
-        val reserved = setOf(
-            KEY_HIDE_ICON, KEY_SHOW_ALL_CARDS, KEY_SUPER_LAND, KEY_TEST_MODE,
-            KEY_DEBUG, KEY_DEV_MODE, KEY_FIRST_RUN, "class", "method", "method_arg",
-            "load_url_from_arg", "replace_url_to_arg",
-        )
-        settings.all.keys.filterNot { reserved.contains(it) }.forEach { editor.remove(it) }
-        editor.apply()
+        mappingPairs().keys.forEach { editor.remove(it) }
+        editor.putLong("mapping_revision", maxOf(System.currentTimeMillis(), settings.getLong("mapping_revision", 0L) + 1))
+        check(editor.commit()) { "清空映射失败" }
+        if (syncSnapshots) SnapshotSync.request(appContext)
     }
 
     /** hook 进程报告的存活时间戳。 */

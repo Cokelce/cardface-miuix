@@ -29,6 +29,7 @@ class ImageProvider : ContentProvider() {
         val name = uri.lastPathSegment ?: throw FileNotFoundException("empty image path")
         val ctx: Context = context ?: throw FileNotFoundException("no context")
         val file = ImageStore(ctx).find(name) ?: throw FileNotFoundException("image not found: $name")
+        if (!ImageValidation.valid(file)) throw FileNotFoundException("invalid replacement PNG")
         return ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
     }
 

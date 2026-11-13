@@ -93,18 +93,8 @@ object UrlMapper {
      * 先精确匹配；再按归一化 URL 匹配；最后按「唯一同名文件」兜底。
      * 这样卡包把 URL 换成带新签名/尺寸/哈希的版本时，仍然能命中原来的替换图。
      */
-    fun lookupMapping(url: String, mappings: Map<String, String>): String? {
-        mappings[url]?.let { return it }
-        val identity = com.dsh.miuix.cardface.core.CardIdentity.key(url)
-        val sameCard = mappings.filterKeys { com.dsh.miuix.cardface.core.CardIdentity.key(it) == identity }.values.distinct()
-        if (sameCard.size == 1) return sameCard.first()
-        val normalized = normalizedUrl(url)
-        mappings.entries.firstOrNull { normalizedUrl(it.key) == normalized }?.let { return it.value }
-        val base = normalized.substringAfterLast('/')
-        if (base.isEmpty()) return null
-        val candidates = mappings.filterKeys { normalizedUrl(it).substringAfterLast('/') == base }
-        return if (candidates.size == 1) candidates.values.first() else null
-    }
+    fun lookupMapping(url: String, mappings: Map<String, String>): String? =
+        com.dsh.miuix.cardface.core.MappingPolicy.lookup(url, mappings)
 
     fun isHttpUrl(value: String): Boolean =
         value.startsWith("https://") || value.startsWith("http://")
@@ -124,7 +114,7 @@ object UrlMapper {
     fun isReplacementAsset(url: String, mappings: Map<String, String>): Boolean {
         if (url.startsWith("content://$IMAGE_AUTHORITY/")) return true
         if (isHttpUrl(url)) {
-            return mappings.values.any { isHttpUrl(it) && normalizedUrl(it) == normalizedUrl(url) }
+            return mappings.values.any { isHttpUrl(it) && com.dsh.miuix.cardface.core.CardIdentity.key(it) == com.dsh.miuix.cardface.core.CardIdentity.key(url) }
         }
         val name = url.substringBefore('?').substringAfterLast('/')
         return mappings.values.any { !isHttpUrl(it) && it == name } ||

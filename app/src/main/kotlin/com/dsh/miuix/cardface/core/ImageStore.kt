@@ -27,8 +27,10 @@ class ImageStore(context: Context) {
             ?.map { GalleryImage(it) }
             .orEmpty()
 
-    fun find(name: String): File? =
-        File(dir, name).takeIf { it.exists() } ?: File(appliedDir, name).takeIf { it.exists() }
+    fun find(name: String): File? {
+        if (!com.dsh.miuix.cardface.xposed.UrlMapper.isSafeImageName(name)) return null
+        return File(dir, name).takeIf { it.isFile } ?: File(appliedDir, name).takeIf { it.isFile }
+    }
 
     fun uniqueName(base: String): String {
         var name = base.ifBlank { defaultName() }
@@ -43,22 +45,23 @@ class ImageStore(context: Context) {
     fun defaultName(): String =
         "card-" + SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
 
-    fun save(bitmap: Bitmap, name: String): File {
-        val file = File(dir, name)
-        FileOutputStream(file).use { out ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-        }
-        return file
+    private fun saveAtomic(bitmap: Bitmap, dir: File, name: String): File {
+        require(com.dsh.miuix.cardface.xposed.UrlMapper.isSafeImageName(name))
+        val dest = File(dir, name)
+        val tmp = File.createTempFile(".cardface-", ".png", dir)
+        try {
+            FileOutputStream(tmp).use { output ->
+                check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) { "PNG 编码失败" }
+                output.fd.sync()
+            }
+            check(ImageValidation.valid(tmp)) { "保存图片校验失败" }
+            check(tmp.renameTo(dest)) { "图片原子保存失败" }
+            return dest
+        } finally { tmp.delete() }
     }
 
-    /** 保存「实际应用到卡包」的合成图，放在隐藏目录，不出现在图库列表。 */
-    fun saveApplied(bitmap: Bitmap, name: String): File {
-        val file = File(appliedDir, name)
-        FileOutputStream(file).use { out ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-        }
-        return file
-    }
+    fun save(bitmap: Bitmap, name: String): File = saveAtomic(bitmap, dir, name)
+    fun saveApplied(bitmap: Bitmap, name: String): File = saveAtomic(bitmap, appliedDir, name)
 
     fun load(name: String): Bitmap? = find(name)?.let { BitmapFactory.decodeFile(it.absolutePath) }
 

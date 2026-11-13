@@ -66,10 +66,10 @@ class UrlMapperTest {
     }
 
     @Test
-    fun `url with hashed path segment still maps to original`() {
+    fun `unrelated hashed path is not inferred as original`() {
         val url = "https://cdn.example.com/mfc/thumbnail/webp/a1b2c3d4e5f6a7b8/xx.png"
         val env = env(mappings = mapOf("https://cdn.example.com/mfc/thumbnail/webp/xx.png" to "mine.png"))
-        assertEquals(UrlMapper.LOCAL_IMAGE_URI_PREFIX + "mine.png", UrlMapper.map(url, env).url)
+        assertEquals("", UrlMapper.map(url, env).url)
     }
 
     @Test

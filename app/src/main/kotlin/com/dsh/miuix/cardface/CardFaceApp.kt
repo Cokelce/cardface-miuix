@@ -92,6 +92,7 @@ fun CardFaceApp() {
         resolver.registerContentObserver(android.net.Uri.parse("$root/card_urls"), true, observer)
         resolver.registerContentObserver(android.net.Uri.parse("$root/apply_state"), true, observer)
         resolver.registerContentObserver(android.net.Uri.parse("$root/runtime_health"), true, observer)
+        resolver.registerContentObserver(android.net.Uri.parse("$root/card_sources"), true, observer)
         onDispose { resolver.unregisterContentObserver(observer) }
     }
 

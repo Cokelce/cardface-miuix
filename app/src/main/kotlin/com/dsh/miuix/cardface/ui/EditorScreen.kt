@@ -138,8 +138,18 @@ fun EditorScreen(
     }
 
     fun applyReplacement(value: String?) {
-        prefs.setReplacement(url, value)
-        draft.clearPendingImage()
+        if (draft.saving) return
+        draft.saving = true
+        scope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    com.dsh.miuix.cardface.core.ReplacementService.apply(context, prefs, store, url, value)
+                }
+                draft.clearPendingImage()
+                toast(if (value.isNullOrBlank()) "替换已清空，源图片保留；请重新打开钱包" else "映射与快照已保存，请打开钱包确认命中")
+            } catch (t: Throwable) { errorMessage = t.message ?: "保存失败，原配置保留" }
+            finally { draft.saving = false }
+        }
     }
 
     fun doSave(name: String) {
@@ -161,24 +171,17 @@ fun EditorScreen(
                 errorMessage = "图像合成失败：这张图可能已经损坏，换一张试试。"
                 return@launch
             }
-            runCatching {
-                withContext(Dispatchers.IO) { store.saveApplied(bitmap, finalName) }
-            }.onSuccess {
-                prefs.setReplacement(url, finalName)
-                runCatching {
-                    withContext(Dispatchers.IO) {
-                        com.dsh.miuix.cardface.core.CardSync.copyImage(context, store, finalName)
-                        com.dsh.miuix.cardface.core.CardSync.writeMapSnapshot(context, prefs)
-                    }
+            try {
+                withContext(Dispatchers.IO) {
+                    store.saveApplied(bitmap, finalName)
+                    com.dsh.miuix.cardface.core.ReplacementService.apply(context, prefs, store, url, finalName)
                 }
                 draft.clearPendingImage()
                 savedName = finalName
-                draft.saving = false
                 showSuccess = true
-            }.onFailure {
-                draft.saving = false
-                errorMessage = "保存失败：${it.message ?: "未知错误"}"
-            }
+            } catch (t: Throwable) {
+                errorMessage = t.message ?: "保存失败，原配置保留"
+            } finally { draft.saving = false }
         }
     }
 
@@ -419,7 +422,7 @@ fun EditorScreen(
                         } else {
                             applyReplacement(value)
                             showPasteDialog = false
-                            toast("已应用网络图片，重启卡包后生效")
+
                         }
                     },
                     modifier = Modifier.weight(1f),
@@ -483,8 +486,8 @@ fun EditorScreen(
     if (showSuccess) {
         OverlayDialog(
             show = true,
-            title = "已应用到卡包",
-            summary = "替换图「$savedName」已保存，重启卡包后生效。",
+            title = "已保存，等待钱包加载",
+            summary = "替换图「$savedName」、钱包副本与映射快照已核验。重新打开钱包后查看命中回报。",
             onDismissRequest = { showSuccess = false },
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -520,9 +523,8 @@ fun EditorScreen(
         destructive = true,
         onConfirm = {
             showClearConfirm = false
-            replacement?.takeIf { !DeviceBridge.isRemote(it) }?.let { store.delete(it) }
+            // Clearing a mapping must never delete shared source images.
             applyReplacement(null)
-            toast("已清空替换，重启卡包后生效")
         },
         onDismiss = { showClearConfirm = false },
     )

@@ -10,7 +10,7 @@ package com.dsh.miuix.cardface.core
 object HookAutoRefresh {
 
     /** hook 定位逻辑版本；改动 MethodLocator 后 +1，用户打开 App 就会自动刷新卡包。 */
-    const val TARGET_VERSION = 8
+    const val TARGET_VERSION = 9
     private const val KEY_VERSION = "hook_target_version"
 
     fun ensureFresh(context: android.content.Context, prefs: AppPrefs): Boolean {
@@ -21,11 +21,12 @@ object HookAutoRefresh {
         val pkg = kind.packageName
         val files = "/proc/1/root/data/data/$pkg/files"
         // 删除旧版与新版方法缓存，强制重新定位；顺手把卡包停掉。
-        RootShell.exec(
-            "rm -f '$files'/cardface.method*.txt '$files'/zhizi42.diycard.method*.txt 2>/dev/null; " +
-                "am force-stop '$pkg' 2>/dev/null; echo done",
+        val result = RootShell.exec(
+            "rm -f '$files'/cardface.method*.txt '$files'/zhizi42.diycard.method*.txt && " +
+                "am force-stop '$pkg'",
             timeoutMs = 8000,
         )
+        if (!result.ok) return false
         prefs.settings.edit().putInt(KEY_VERSION, TARGET_VERSION).apply()
         prefs.bumpRevision()
         return true

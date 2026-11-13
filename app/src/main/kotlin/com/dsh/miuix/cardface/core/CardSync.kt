@@ -12,28 +12,23 @@ object CardSync {
     /** 映射快照：卡包 files/cardface.map，hook 冷启动直接读（无 IPC）。 */
     const val MAP_SNAPSHOT_NAME = "cardface.map"
 
+    @Synchronized
     fun writeMapSnapshot(context: android.content.Context, prefs: AppPrefs): Boolean {
         val kind = WalletApps.primary(context) ?: return false
-        val text = buildString {
-            prefs.mappingPairs().forEach { (url, name) ->
-                append(url).append('\t').append(name).append('\n')
-            }
-        }
+        var tmp: java.io.File? = null
         return try {
-            val tmp = java.io.File(context.cacheDir, MAP_SNAPSHOT_NAME)
-            tmp.writeText(text)
+            val raw = context.getSharedPreferences("settings", android.content.Context.MODE_PRIVATE).all
+            val mappings = raw.mapNotNull { (key, value) ->
+                if ((key.startsWith("https://") || key.startsWith("http://")) && value is String && value.isNotBlank()) key to value else null
+            }.toMap()
+            val text = MappingSnapshot.encode(mappings, raw["mapping_revision"] as? Long ?: 0L)
+            val file = java.io.File.createTempFile("cardface-map-", ".json", context.cacheDir)
+            tmp = file
+            java.io.FileOutputStream(file).use { it.write(text.toByteArray(Charsets.UTF_8)); it.fd.sync() }
             val dir = "/proc/1/root/data/data/${kind.packageName}/files"
-            val dest = "$dir/$MAP_SNAPSHOT_NAME"
-            val r = RootShell.exec(
-                "mkdir -p \"$dir\" && cp -f \"${tmp.absolutePath}\" \"$dest\" && chmod 644 \"$dest\"",
-                timeoutMs = 8000,
-            )
-            if (!r.ok) return false
-            val check = RootShell.exec("cat \"$dest\"", timeoutMs = 5000)
-            check.ok && check.stdout.length == text.length
-        } catch (_: Throwable) {
-            false
-        }
+            RootShell.copyIntoDir(file.absolutePath, dir, MAP_SNAPSHOT_NAME, timeoutMs = 10000).ok
+        } catch (_: Throwable) { false }
+        finally { tmp?.delete() }
     }
 
 
@@ -58,6 +53,7 @@ object CardSync {
     ): Boolean {
         val dir = walletImagesDir(context) ?: return false
         val file = store.find(name) ?: return false
+        if (!ImageValidation.valid(file)) return false
         val result = RootShell.copyIntoDir(file.absolutePath, dir, name, timeoutMs = timeoutMs)
         return result.ok
     }
@@ -71,6 +67,7 @@ object CardSync {
         var copied = 0
         prefs.mappedImageNames().forEach { name ->
             val file = store.find(name) ?: return@forEach
+            if (!ImageValidation.valid(file)) return@forEach
             if (RootShell.copyIntoDir(file.absolutePath, dir, name).ok) copied++
         }
         writeMapSnapshot(context, prefs)

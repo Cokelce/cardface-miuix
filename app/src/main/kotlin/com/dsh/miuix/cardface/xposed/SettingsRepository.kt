@@ -42,7 +42,10 @@ class SettingsRepository(private val module: XposedModule) {
 
     /** 卡包 files/cardface.map 快照（App 写入），作为最低优先级兜底。 */
     @Volatile
-    private var snapshotMappings: Map<String, String> = emptyMap()
+    private var snapshotState = com.dsh.miuix.cardface.core.MappingPolicy.State(emptyMap(), 0)
+    @Volatile private var currentProviderState: com.dsh.miuix.cardface.core.MappingPolicy.State? = null
+    @Volatile private var cachedProviderState: com.dsh.miuix.cardface.core.MappingPolicy.State? = null
+    private var snapshotReadAt = 0L
 
     @Volatile
     private var dirty = true
@@ -136,6 +139,57 @@ class SettingsRepository(private val module: XposedModule) {
         }
     }
 
+    @Volatile private var sourceGroups: List<Set<String>> = emptyList()
+    @Volatile private var assetOrigins: Map<String, Set<String>> = emptyMap()
+    private var sourceReadAt = 0L
+    private val observedSources = java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>()
+
+    fun reportSource(card: Any?, wallet: String, url: String) {
+        val id = com.dsh.miuix.cardface.core.CardSourceIndex.stableId(card, wallet) ?: return
+        if (observedSources.size >= 256 && !observedSources.containsKey(id)) return
+        val set = observedSources.getOrPut(id) { java.util.Collections.synchronizedSet(linkedSetOf()) }
+        synchronized(set) {
+            if (!set.add(url)) return
+            nameWorker.execute {
+                val p = provider ?: run { synchronized(set) { set.remove(url) }; return@execute }
+                try {
+                    val existing = p.readAll("card_sources")?.get(id) as? String
+                    val old = existing?.let { org.json.JSONArray(it) }
+                    val urls = linkedSetOf<String>()
+                    if (old != null) for (i in 0 until old.length()) urls.add(old.getString(i))
+                    synchronized(set) { urls.addAll(set) }
+                    if (urls.size > 16) return@execute
+                    if (p.putString("card_sources", id, org.json.JSONArray(urls.toList()).toString())) sourceReadAt = 0L
+                    else synchronized(set) { set.remove(url) }
+                } catch (_: Throwable) { synchronized(set) { set.remove(url) } }
+            }
+        }
+    }
+
+    private fun refreshSources() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - sourceReadAt < 2000L) return
+        sourceReadAt = now
+        val p = provider ?: return
+        fun strings(value: Any?): Set<String>? = runCatching {
+            when(value) {
+                is Set<*> -> value.filterIsInstance<String>().toSet()
+                is String -> { val a = org.json.JSONArray(value); (0 until a.length()).map { a.getString(it) }.toSet() }
+                else -> emptySet()
+            }
+        }.getOrNull()
+        p.readAll("card_sources")?.let { sourceGroups = it.values.mapNotNull { value -> strings(value) } }
+        p.readAll("asset_origins")?.let { data -> assetOrigins = data.mapValues { strings(it.value).orEmpty() } }
+    }
+
+    fun originalForAsset(url: String): String? {
+        refreshSources()
+        val key = com.dsh.miuix.cardface.core.CardRuntime.fingerprint(url)
+        val nameKey = com.dsh.miuix.cardface.core.CardRuntime.fingerprint(url.substringAfterLast('/'))
+        return com.dsh.miuix.cardface.core.CardSourceIndex.originalForAsset(url, mappings(),
+            assetOrigins[key].orEmpty() + assetOrigins[nameKey].orEmpty())
+    }
+
     // ---------- 初始化 ----------
 
     fun init() {
@@ -201,7 +255,10 @@ class SettingsRepository(private val module: XposedModule) {
         dirty = false
         lastProviderReadMs = now
         val p = provider ?: return
+        loadSnapshot()
         val settings = p.readAll(GROUP_SETTINGS)
+        currentProviderState = settings?.let { stateOf(it) }
+        currentProviderState?.let { cachedProviderState = it }
         val cards = p.readAll(GROUP_CARD_URLS)
         if (settings != null || cards != null) {
             if (settings != null) { providerReadable = true; providerSettings = settings }
@@ -223,21 +280,23 @@ class SettingsRepository(private val module: XposedModule) {
         return out
     }
 
-    private fun loadSnapshot() {
+    private fun loadSnapshot(force: Boolean = false) {
+        val now = SystemClock.elapsedRealtime()
+        if (!force && now - snapshotReadAt < 1000) return
+        snapshotReadAt = now
         val ctx = context ?: return
         try {
             val file = java.io.File(ctx.filesDir, "cardface.map")
-            if (!file.isFile) return
-            val map = LinkedHashMap<String, String>()
-            file.forEachLine { line ->
-                val tab = line.indexOf('\t')
-                if (tab in 1 until line.length - 1) {
-                    map[line.substring(0, tab)] = line.substring(tab + 1)
-                }
-            }
-            snapshotMappings = map
-        } catch (_: Throwable) {
-        }
+            if (!file.isFile || file.length() > 2 * 1024 * 1024) return
+            snapshotState = com.dsh.miuix.cardface.core.MappingSnapshot.decode(file.readText())
+        } catch (t: Throwable) { XLog.w("snapshot read failed; retained last valid copy", t) }
+    }
+
+    private fun stateOf(data: Map<String, Any?>): com.dsh.miuix.cardface.core.MappingPolicy.State {
+        val mappings = data.mapNotNull { (key, value) ->
+            if ((key.startsWith("https://") || key.startsWith("http://")) && value is String && value.isNotBlank()) key to value else null
+        }.toMap()
+        return com.dsh.miuix.cardface.core.MappingPolicy.State(mappings, (data["mapping_revision"] as? Number)?.toLong() ?: 0L)
     }
 
     fun mergeCardUrls(): Map<String, Any?> {
@@ -297,14 +356,13 @@ class SettingsRepository(private val module: XposedModule) {
 
     /** settings 里除保留键外的 String 项 = url -> 替换值（文件名 / http 地址）。 */
     fun mappings(): Map<String, String> {
-        val out = LinkedHashMap<String, String>()
-        // 快照优先级最低：先放快照，再被 provider，最后被远程覆盖。
-        if (!providerReadable && frameworkSettings == null) out.putAll(snapshotMappings)
-        mergeSettings().forEach { (key, value) ->
-            if (key in RESERVED_KEYS) return@forEach
-            if (value is String && value.isNotEmpty() && (key.startsWith("https://") || key.startsWith("http://"))) out[key] = value
-        }
-        return out
+        loadSnapshot()
+        val framework = try { frameworkSettings?.all?.let { stateOf(it) } }
+            catch (_: Throwable) { null }
+        val base = com.dsh.miuix.cardface.core.MappingPolicy.select(currentProviderState, framework,
+            snapshotState, cachedProviderState).mappings
+        refreshSources()
+        return com.dsh.miuix.cardface.core.CardSourceIndex.expand(base, sourceGroups)
     }
 
     fun blacklist(): Set<String> = rawStringSet(KEY_BLACK_CARD_URLS)

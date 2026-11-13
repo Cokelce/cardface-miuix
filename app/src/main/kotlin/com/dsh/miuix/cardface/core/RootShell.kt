@@ -63,19 +63,7 @@ object RootShell {
         mode: String = "644",
         timeoutMs: Long = 5000,
     ): Result {
-        val dest = "${destDir.trimEnd('/')}/$fileName"
-        val command = buildString {
-            append("mkdir -p ").append(quote(destDir.trimEnd('/')))
-            append(" && { [ -f ").append(quote(dest)).append(" ] || cp ").append(quote(sourcePath))
-            append(' ').append(quote(dest)).append("; }")
-            append(" && chmod ").append(mode).append(' ').append(quote(dest))
-            if (destDir.contains("/data/data/")) {
-                val pkgDir = destDir.substringBefore("/files/")
-                append(" && chown $(stat -c %u:%g ").append(quote(pkgDir)).append(") ").append(quote(dest))
-                append(" && restorecon ").append(quote(dest))
-            }
-        }
-        return runSu(command, timeoutMs)
+        return runSu(AtomicFileCopy.script(sourcePath, destDir, fileName, mode), timeoutMs)
     }
 
     fun mkdirs(path: String, timeoutMs: Long = 5000): Result =

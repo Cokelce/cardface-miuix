@@ -52,7 +52,7 @@ class HookEngine(
     @Volatile private var contextForHealth: Context? = null
 
     @Volatile
-    private var rootDenied = false
+    private var rootRetryAt = 0L
 
     private var lastCompatWarnMs = 0L
 
@@ -250,6 +250,7 @@ class HookEngine(
 
     /** OnePlus/ColorOS 5.52.0: capture original card URLs and reuse the full editor/map pipeline. */
     private fun installOnePlusHooks() {
+        installKnownGlideLoaders()
         val targets = listOf(
             "com.nearme.wallet.db.NfcCard" to "getCardImg",
             "com.nearme.wallet.db.NfcCardDetail" to "getCardImg",
@@ -264,7 +265,18 @@ class HookEngine(
             try {
                 val method = classLoader.loadClass(name).getDeclaredMethod(getter)
                 if (method.returnType != String::class.java) continue
-                install(method, "oneplus:card-url", false, false, true)
+                module.hook(method).intercept(object : XposedInterface.Hooker {
+                    override fun intercept(chain: XposedInterface.Chain): Any? {
+                        val original = chain.proceed()
+                        try {
+                            val url = original as? String
+                            if (!url.isNullOrBlank()) observeOriginal(url, chain.thisObject)
+                        } catch (t: Throwable) { XLog.w("card metadata capture failed", t) }
+                        return original
+                    }
+                })
+                installedCount++
+                cardGetterCount++
             } catch (t: Throwable) {
                 missingTargets.add("$name#$getter")
                 XLog.w("optional OnePlus getter unavailable: $name#$getter", t)
@@ -274,13 +286,16 @@ class HookEngine(
         try {
             val imageView = classLoader.loadClass("com.finshell.finui.widget.imageview.CircleNetworkImageView")
             for (method in imageView.declaredMethods.filter {
-                it.name in setOf("g1", "i1") && it.parameterCount >= 3 && it.parameterTypes[0] == String::class.java
+                it.name in setOf("g1", "i1", "x0", "y0") && it.parameterCount >= 1 && it.parameterTypes[0] == String::class.java
             }) {
                 module.hook(method).intercept(object : XposedInterface.Hooker {
                     override fun intercept(chain: XposedInterface.Chain): Any? {
-                        val url = chain.getArg(0) as? String ?: return chain.proceed()
-                        if (UrlMapper.lookupMapping(url, settingsRepo.mappings()) == null) return chain.proceed()
-                        val replacement = replaceUrl(url, false)
+                        val rawUrl = chain.getArg(0) as? String ?: return chain.proceed()
+                        settingsRepo.snapshot()
+                        val url = settingsRepo.originalForAsset(rawUrl) ?: rawUrl
+                        val hasMapping = UrlMapper.lookupMapping(url, settingsRepo.mappings()) != null
+                        if (!hasMapping && url == rawUrl) return chain.proceed()
+                        val replacement = if (hasMapping) replaceUrl(url, false) else url
                         if (replacement.isEmpty()) return chain.proceed()
                         val args = Array<Any?>(method.parameterCount) { chain.getArg(it) }
                         args[0] = replacement
@@ -294,6 +309,38 @@ class HookEngine(
             missingTargets.add("CircleNetworkImageView.g1/i1")
             XLog.w("optional OnePlus image loader unavailable", t)
         }
+    }
+
+    private fun installKnownGlideLoaders() {
+        for ((type, methodName) in listOf("com.bumptech.glide.j" to "r", "com.bumptech.glide.RequestManager" to "load")) {
+            try {
+                val method = classLoader.loadClass(type).getDeclaredMethod(methodName, String::class.java)
+                if (method.returnType.name !in setOf("com.bumptech.glide.i", "com.bumptech.glide.RequestBuilder")) continue
+                module.hook(method).intercept(object : XposedInterface.Hooker {
+                    override fun intercept(chain: XposedInterface.Chain): Any? {
+                        val raw = chain.getArg(0) as? String ?: return chain.proceed()
+                        settingsRepo.snapshot()
+                        val original = settingsRepo.originalForAsset(raw) ?: raw
+                        val mapped = UrlMapper.lookupMapping(original, settingsRepo.mappings())
+                        if (mapped == null && original == raw) return chain.proceed()
+                        val target = if (mapped == null) original else replaceUrl(original, false)
+                        return if (target.isBlank()) chain.proceed() else chain.proceed(arrayOf<Any?>(target))
+                    }
+                })
+                installedCount++; loaderCount++
+            } catch (_: ClassNotFoundException) { }
+            catch (_: NoSuchMethodException) { }
+            catch (t: Throwable) { XLog.w("Glide display hook unavailable: $type#$methodName", t) }
+        }
+    }
+
+    private fun observeOriginal(url: String, card: Any?) {
+        settingsRepo.snapshot()
+        if (UrlMapper.isReplacementAsset(url, settingsRepo.mappings())) return
+        settingsRepo.addCardUrl(url)
+        settingsRepo.reportSource(card, walletPackage, url)
+        com.dsh.miuix.cardface.core.CardNameResolver.fromCard(card)?.let { settingsRepo.reportCardName(url, it) }
+        settingsRepo.touchLastHookAt()
     }
 
     /**
@@ -444,7 +491,8 @@ class HookEngine(
         val now = System.currentTimeMillis()
         if (now - walletImageCacheAt < 2000L) return walletImageCache
         val names = try {
-            File(walletImagesDir).list()?.toSet().orEmpty()
+            File(walletImagesDir).listFiles()?.filter { com.dsh.miuix.cardface.core.ImageValidation.valid(it) }
+                ?.map { it.name }?.toSet().orEmpty()
         } catch (_: Throwable) {
             emptySet()
         }
@@ -463,23 +511,25 @@ class HookEngine(
     }
 
     private fun copyToWallet(copy: UrlMapper.CopyRequest): Boolean {
-        if (rootDenied) return false
-        val images = "$moduleDataDir/files/images/${copy.localName}"
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now < rootRetryAt) return false
         val applied = "$moduleDataDir/files/applied/${copy.localName}"
-        val source = if (File(applied).isFile) applied else images
-        val result = RootShell.copyIntoDir(source, walletImagesDir, copy.localName, timeoutMs = 5000)
-        if (result.ok) return true
-        // 兼容模式的复制由卡包进程触发 root 请求很不友好；失败一次后就本进程内不再重试，
-        // 直接退回 content:// （不需要 root，卡面替换依然生效）。
-        rootDenied = true
-        val now = System.currentTimeMillis()
-        if (now - lastCompatWarnMs > 60_000) {
-            lastCompatWarnMs = now
-            XLog.w(
-                "compat copy failed (rc=${result.exitCode}), fallback to content://; " +
-                    "建议关掉兼容模式，或在 App 侧用 root 把图复制进卡包目录",
-                result.stderr.take(200).takeIf { it.isNotBlank() }?.let { RuntimeException(it) },
-            )
+        val images = "$moduleDataDir/files/images/${copy.localName}"
+        fun q(value: String) = "'" + value.replace("'", "'\\''") + "'"
+        val first = com.dsh.miuix.cardface.core.AtomicFileCopy.script(applied, walletImagesDir, copy.localName)
+        val second = com.dsh.miuix.cardface.core.AtomicFileCopy.script(images, walletImagesDir, copy.localName)
+        // Source selection must run as Root, not under the wallet's sandbox identity.
+        val result = RootShell.exec("if [ -f ${q(applied)} ]; then (\n$first\n); else (\n$second\n); fi", timeoutMs = 8000)
+        val file = File(walletImagesDir, copy.localName)
+        if (result.ok && com.dsh.miuix.cardface.core.ImageValidation.valid(file)) {
+            walletImageCacheAt = 0L
+            rootRetryAt = 0L
+            return true
+        }
+        rootRetryAt = now + 30_000L
+        if (System.currentTimeMillis() - lastCompatWarnMs > 60_000L) {
+            lastCompatWarnMs = System.currentTimeMillis()
+            XLog.w("local image sync not ready; provider fallback with bounded retry")
         }
         return false
     }
