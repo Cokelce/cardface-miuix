@@ -27,6 +27,7 @@ enum class Page(val route: String, val title: String) {
     Settings("settings", "设置"),
     Editor("editor", "自定义卡面"),
     Crop("crop", "裁剪卡面"),
+    Online("online", "在线卡面"),
     Guide("guide", "使用说明"),
     Faq("faq", "常见问题"),
     About("about", "关于与捐赠"),

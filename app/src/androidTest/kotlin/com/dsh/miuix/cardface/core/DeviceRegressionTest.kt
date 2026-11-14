@@ -333,4 +333,40 @@ class DeviceRegressionTest {
         assertTrue(target.getSharedPreferences("replacement_assets",0).all.isNotEmpty())
     }
 
+    @Test fun onlineFavoritesAreMetadataOnlyAndReversible() {
+        val ctx=Isolated(target)
+        try {
+            val repo=OnlineRepository(ctx)
+            val card=OnlineCard("qa-test",OnlineCategory.BANK,"测试卡面","测试银行","https://storage.my-api.cn/static/images/test.png","Hibank")
+            assertFalse(repo.isFavorite(card));repo.toggleFavorite(card)
+            assertTrue(repo.isFavorite(card));assertEquals(card,repo.favorites().single())
+            assertTrue(ImageStore(ctx).list().isEmpty())
+            repo.toggleFavorite(card);assertFalse(repo.isFavorite(card));assertTrue(repo.favorites().isEmpty())
+        } finally {ctx.close()}
+    }
+    @Test fun onlineCatalogLiveNetworkAndLocalDownload() = kotlinx.coroutines.runBlocking {
+        org.junit.Assume.assumeTrue("Explicit online source verification only",
+            InstrumentationRegistry.getArguments().getString("verifyOnlineSources")=="true")
+        val ctx=Isolated(target)
+        try {
+            val repo=OnlineRepository(ctx)
+            var first:OnlineCard?=null
+            for(category in OnlineCategory.entries){
+                val page=repo.load(category,1,"","")
+                assertFalse("category=$category",page.cached)
+                assertTrue("category=$category",page.total>0 && page.cards.isNotEmpty())
+                assertTrue(page.cards.size<=OnlineCatalog.PAGE_SIZE)
+                if(first==null)first=page.cards.first()
+            }
+            val card=first!!
+            val file=repo.download(card){_,_->}
+            assertTrue(ImageValidation.valid(file));assertEquals(file,repo.download(card){_,_->})
+            assertEquals(card.key,repo.recent().first().key)
+            assertNotNull(repo.cachedLocal(card))
+            val bitmap=BitmapPipeline.decodeFile(file.absolutePath)!!
+            assertTrue(bitmap.width>0 && bitmap.height>0);bitmap.recycle()
+            assertTrue(AppPrefs(ctx,false).mappingPairs().isEmpty())
+        } finally {ctx.close()}
+    }
+
 }

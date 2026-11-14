@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -76,6 +78,7 @@ fun EditorScreen(
     innerPadding: PaddingValues,
     onBack: () -> Unit,
     onStartCrop: (Uri) -> Unit,
+    onOpenOnline: () -> Unit,
 ) {
     val context = LocalContext.current
     val prefs = model.prefs
@@ -268,34 +271,23 @@ fun EditorScreen(
             }
 
             item(key = "actions") {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    ActionTile(
-                        icon = MiuixIcons.Album,
-                        label = "从相册选",
-                        onClick = {
-                            picker.launch(
-                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                            )
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                    ActionTile(
-                        icon = MiuixIcons.Link,
-                        label = "粘贴网址",
-                        onClick = { showPasteDialog = true },
-                        modifier = Modifier.weight(1f),
-                    )
-                    ActionTile(
-                        icon = MiuixIcons.Photos,
-                        label = "从图库选",
-                        onClick = { showGallerySheet = true },
-                        modifier = Modifier.weight(1f),
-                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ActionTile(icon = MiuixIcons.Album, label = "从相册选", subtitle = "选择手机里的图片",
+                            onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            modifier = Modifier.weight(1f))
+                        ActionTile(icon = MiuixIcons.Link, label = "粘贴网址", subtitle = "使用图片直链",
+                            onClick = { showPasteDialog = true }, modifier = Modifier.weight(1f))
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ActionTile(icon = MiuixIcons.Photos, label = "从图库选", subtitle = "复用已保存的卡面",
+                            onClick = { showGallerySheet = true }, modifier = Modifier.weight(1f))
+                        ActionTile(icon = MiuixIcons.Photos, label = "在线卡面", subtitle = "银行 · 交通 · IP 联动",
+                            onClick = onOpenOnline, modifier = Modifier.weight(1f))
+                    }
                 }
             }
 
@@ -545,32 +537,46 @@ fun EditorScreen(
 private fun ActionTile(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
+    subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = modifier,
-        cornerRadius = 16.dp,
-        insideMargin = PaddingValues(vertical = 14.dp),
+        cornerRadius = 18.dp,
+        insideMargin = PaddingValues(horizontal = 12.dp, vertical = 16.dp),
         colors = CardDefaults.defaultColors(),
         onClick = onClick,
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MiuixTheme.colorScheme.primary,
-            modifier = Modifier
-                .align(Alignment.CenterHorizontally)
-                .size(24.dp),
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = label,
-            style = MiuixTheme.textStyles.footnote1,
-            color = MiuixTheme.colorScheme.onSurface,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-            maxLines = 1,
-        )
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val compact = maxWidth < 150.dp
+            if (compact) {
+                Column(Modifier.fillMaxWidth().heightIn(min = 78.dp), horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center) {
+                    Icon(imageVector = icon, contentDescription = null, tint = MiuixTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.height(8.dp))
+                    Text(label, style = MiuixTheme.textStyles.body2, fontWeight = FontWeight.Medium,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(Modifier.height(3.dp))
+                    Text(subtitle, style = MiuixTheme.textStyles.footnote2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            } else Row(Modifier.fillMaxWidth().heightIn(min = 78.dp), verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp))
+                .background(MiuixTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
+                Icon(imageVector = icon, contentDescription = null,
+                    tint = MiuixTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+            }
+            Column(Modifier.weight(1f)) {
+                Text(label, style = MiuixTheme.textStyles.body2, fontWeight = FontWeight.Medium,
+                    color = MiuixTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(3.dp))
+                Text(subtitle, style = MiuixTheme.textStyles.footnote2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        }
     }
 }
 

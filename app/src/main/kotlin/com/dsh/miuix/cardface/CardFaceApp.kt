@@ -288,8 +288,19 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                     onOpenDevConsole = { nav.push(Route(Page.DevConsole)) },
                 )
 
+                Page.Online -> com.dsh.miuix.cardface.ui.OnlineGalleryScreen(
+                    model = model, innerPadding = innerPadding, onBack = { nav.pop() },
+                    onUse = { uri ->
+                        nav.pop()
+                        model.startCrop(CropTarget.Editor)
+                        model.cropUri = uri
+                        nav.push(Route(Page.Crop))
+                    },
+                )
+
                 Page.Editor -> EditorScreen(
                     model = model,
+                    onOpenOnline = { nav.push(Route(Page.Online)) },
                     innerPadding = innerPadding,
                     onBack = { nav.pop() },
                     onStartCrop = { uri ->
