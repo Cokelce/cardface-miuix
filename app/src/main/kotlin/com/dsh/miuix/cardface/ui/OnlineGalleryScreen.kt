@@ -62,30 +62,40 @@ fun OnlineGalleryScreen(model:AppModel, innerPadding:PaddingValues, onBack:()->U
                 Column {
                     Text("来源：Hibank · 按需加载，选中后下载到本地",style=MiuixTheme.textStyles.footnote1,color=MiuixTheme.colorScheme.onSurfaceVariantSummary)
                     Text("已应用图片独立保存，清理浏览缓存不影响替换图。",style=MiuixTheme.textStyles.footnote2,color=MiuixTheme.colorScheme.onSurfaceVariantSummary)
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                        listOf("浏览","收藏","最近使用").forEachIndexed { i,label ->
-                            TextButton(text=if(mode==i)"• $label" else label,onClick={mode=i;page=1},modifier=Modifier.weight(1f))
-                        }
-                    }
+                    CatalogSegmentRow(
+                        items = listOf("浏览", "收藏", "最近使用"),
+                        selected = mode,
+                        onSelected = { mode = it; page = 1 },
+                    )
                 }
             }
             if(mode==0) {
                 item(span={GridItemSpan(maxLineSpan)},key="categories") {
-                    Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(6.dp)) {
-                        OnlineCategory.entries.forEachIndexed { i,c ->
-                            TextButton(text=if(categoryIndex==i)"• ${c.label}" else c.label,
-                                onClick={categoryIndex=i;page=1;filter="";appliedFilter=""},modifier=Modifier.weight(1f))
-                        }
-                    }
+                    CatalogSegmentRow(
+                        items = OnlineCategory.entries.map { it.label },
+                        selected = categoryIndex,
+                        onSelected = { i -> categoryIndex = i; page = 1; filter = ""; appliedFilter = "" },
+                    )
                 }
                 item(span={GridItemSpan(maxLineSpan)},key="search") {
                     Card(cornerRadius=18.dp,insideMargin=PaddingValues(12.dp)) {
                         TextField(value=search,onValueChange={search=it.take(120)},label="搜索卡面名称",singleLine=true,modifier=Modifier.fillMaxWidth())
                         Spacer(Modifier.height(8.dp))
                         TextField(value=filter,onValueChange={filter=it.take(120)},label=category.filterLabel,singleLine=true,modifier=Modifier.fillMaxWidth())
-                        Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
-                            TextButton(text="重置",onClick={search="";filter="";appliedSearch="";appliedFilter="";page=1},modifier=Modifier.weight(1f))
-                            TextButton(text="搜索",onClick={appliedSearch=search.trim();appliedFilter=filter.trim();page=1;refresh++},modifier=Modifier.weight(1f))
+                        Row(
+                            Modifier.fillMaxWidth().padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        ) {
+                            CatalogActionButton(
+                                text = "重置",
+                                onClick = { search = ""; filter = ""; appliedSearch = ""; appliedFilter = ""; page = 1 },
+                                modifier = Modifier.weight(1f),
+                            )
+                            CatalogActionButton(
+                                text = "搜索",
+                                onClick = { appliedSearch = search.trim(); appliedFilter = filter.trim(); page = 1; refresh++ },
+                                modifier = Modifier.weight(1f),
+                            )
                         }
                     }
                 }
@@ -148,5 +158,76 @@ fun OnlineGalleryScreen(model:AppModel, innerPadding:PaddingValues, onBack:()->U
     }
     if(download!=null) OverlayDialog(show=true,title="下载卡面",summary=download.orEmpty()+"\n校验图片后保存本地，再进入裁剪。不直接使用远程地址替换。",onDismissRequest={job?.cancel()}) {
         TextButton(text="取消",onClick={job?.cancel()})
+    }
+}
+
+@Composable
+private fun CatalogSegmentRow(
+    items: List<String>,
+    selected: Int,
+    onSelected: (Int) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        items.forEachIndexed { index, item ->
+            CatalogTab(
+                text = item,
+                selected = index == selected,
+                onClick = { onSelected(index) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CatalogTab(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Card(
+        modifier = modifier.height(58.dp),
+        cornerRadius = 16.dp,
+        insideMargin = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+        colors = if (selected) CardDefaults.defaultColors(
+            color = MiuixTheme.colorScheme.primary,
+            contentColor = MiuixTheme.colorScheme.onPrimary,
+        ) else CardDefaults.defaultColors(),
+        onClick = onClick,
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = text,
+                style = MiuixTheme.textStyles.footnote1,
+                color = if (selected) MiuixTheme.colorScheme.onPrimary else MiuixTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CatalogActionButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Card(
+        modifier = modifier.height(60.dp),
+        cornerRadius = 16.dp,
+        insideMargin = PaddingValues(0.dp),
+        onClick = onClick,
+    ) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = text,
+                style = MiuixTheme.textStyles.body2,
+                color = MiuixTheme.colorScheme.onSurface,
+                maxLines = 1,
+                softWrap = false,
+            )
+        }
     }
 }
