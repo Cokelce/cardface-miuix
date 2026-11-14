@@ -80,6 +80,14 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun CardFaceApp() {
     val context = LocalContext.current
     val model = remember { AppModel(context) }
+    LaunchedEffect(Unit) {
+        val intent = (context as? android.app.Activity)?.intent
+        val route = intent?.getStringExtra("cardface_route")
+        val url = intent?.getStringExtra("cardface_url")
+        if (route == "editor" && !url.isNullOrBlank()) {
+            model.openExternalEditor(url)
+        }
+    }
     androidx.compose.runtime.DisposableEffect(model) {
         val resolver = context.contentResolver
         val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
@@ -138,6 +146,16 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
     val nav = rememberSaveable(saver = NavState.Saver) { NavState() }
     val route = nav.current
     val currentPage = route.page
+    LaunchedEffect(route, model.editor.url) {
+        val intent = (context as? android.app.Activity)?.intent
+        val url = intent?.getStringExtra("cardface_url")
+        if (intent?.getStringExtra("cardface_route") == "editor" && !url.isNullOrBlank() && nav.current.page != Page.Editor) {
+            model.openEditor(url)
+            nav.push(Route(Page.Editor, url))
+            intent.removeExtra("cardface_route")
+            intent.removeExtra("cardface_url")
+        }
+    }
 
     BackHandler(enabled = nav.canGoBack) { nav.pop() }
 

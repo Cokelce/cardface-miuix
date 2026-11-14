@@ -200,6 +200,10 @@ class AppModel(context: Context) {
         if (editor.url != url) editor = EditorDraft(url)
     }
 
+    fun openExternalEditor(url: String) {
+        openEditor(url)
+    }
+
     fun startCrop(target: CropTarget) {
         cropTarget = target
     }
