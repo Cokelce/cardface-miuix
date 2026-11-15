@@ -5,8 +5,14 @@ import android.graphics.BitmapFactory
 import com.dsh.miuix.cardface.core.BitmapPipeline
 import com.dsh.miuix.cardface.core.ImageStore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.json.JSONObject
 import java.io.File
 import java.net.HttpURLConnection
@@ -25,10 +31,15 @@ class CatalogRepository(context: Context) {
     private val downloadDir = File(app.cacheDir, "catalog-download").apply { mkdirs() }
     private val store = ImageStore(app)
     private val prefs = app.getSharedPreferences("catalog_library", Context.MODE_PRIVATE)
+    private val animeIndexFile = File(cacheDir, "anime-index.json")
+    @Volatile
+    private var animeItems: List<CatalogItem>? = null
+    private val animeLock = Any()
 
     // ---------- 目录 ----------
 
     suspend fun load(category: CatalogCategory, page: Int, search: String, filter: String): CatalogPage {
+        if (category == CatalogCategory.ANIME) return loadAnime(page, search, filter)
         val primary = loadQuery(
             HibankCatalogSource.queryUrl(category, page, search, filter),
             category,
@@ -214,6 +225,93 @@ class CatalogRepository(context: Context) {
             .putLong("time:${item.key}", System.currentTimeMillis())
             .apply()
     }
+
+    // ---------- 二次元 IP（从 IP 联动目录复制一份，客户端筛选） ----------
+
+    private suspend fun loadAnime(page: Int, search: String, filter: String): CatalogPage {
+        var list = ensureAnimeItems()
+        if (search.isNotBlank()) {
+            val q = search.trim()
+            list = list.filter {
+                it.title.contains(q, ignoreCase = true) || it.subtitle.contains(q, ignoreCase = true)
+            }
+        }
+        if (filter.isNotBlank()) {
+            val q = filter.trim()
+            list = list.filter { it.subtitle.contains(q, ignoreCase = true) }
+        }
+        list = list.sortedWith(compareBy({ it.subtitle }, { it.title }))
+        val pageSize = 24
+        val pages = maxOf(1, (list.size + pageSize - 1) / pageSize)
+        val p = page.coerceIn(1, pages)
+        return CatalogPage(
+            items = list.drop((p - 1) * pageSize).take(pageSize),
+            page = p,
+            pages = pages,
+            total = list.size,
+        )
+    }
+
+    private suspend fun ensureAnimeItems(): List<CatalogItem> {
+        animeItems?.let { return it }
+        synchronized(animeLock) { animeItems?.let { return it } }
+        loadAnimeCache()?.let {
+            animeItems = it
+            return it
+        }
+        val fetched = fetchAnimeIndex()
+        animeItems = fetched
+        runCatching { saveAnimeCache(fetched) }
+        return fetched
+    }
+
+    private fun loadAnimeCache(): List<CatalogItem>? {
+        if (!animeIndexFile.isFile) return null
+        if (System.currentTimeMillis() - animeIndexFile.lastModified() > 7L * 24 * 3600 * 1000) return null
+        return runCatching {
+            val array = org.json.JSONArray(animeIndexFile.readText())
+            (0 until array.length()).mapNotNull { i ->
+                array.optString(i).takeIf { it.isNotBlank() }?.let(::decode)
+            }
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun saveAnimeCache(items: List<CatalogItem>) {
+        val array = org.json.JSONArray()
+        items.forEach { array.put(encode(it)) }
+        val tmp = File.createTempFile(".anime-", ".part", cacheDir)
+        try {
+            tmp.writeText(array.toString())
+            if (!tmp.renameTo(animeIndexFile)) tmp.copyTo(animeIndexFile, overwrite = true)
+        } finally {
+            tmp.delete()
+        }
+    }
+
+    private suspend fun fetchAnimeIndex(): List<CatalogItem> = coroutineScope {
+        val first = requestText(animePageUrl(1))
+        val totalPages = runCatching {
+            JSONObject(first).optJSONObject("data")?.optInt("total_pages", 16) ?: 16
+        }.getOrDefault(16).coerceIn(1, 64)
+        val semaphore = Semaphore(4)
+        val rest = (2..totalPages).map { p ->
+            async(Dispatchers.IO) {
+                semaphore.withPermit {
+                    runCatching { requestText(animePageUrl(p)) }.getOrNull()
+                }
+            }
+        }.awaitAll().filterNotNull()
+        (listOf(first) + rest)
+            .flatMap { text ->
+                runCatching { HibankCatalogSource.parse(text, CatalogCategory.IP).items }
+                    .getOrDefault(emptyList())
+            }
+            .distinctBy { it.key }
+            .filter { AnimeIps.isAnime(it.subtitle) }
+    }
+
+    private fun animePageUrl(page: Int): String =
+        "https://hi.my-api.cn/api/?resource=face_ctu_origin&page=$page&page_size=100"
 
     private fun encode(item: CatalogItem): String = JSONObject()
         .put("id", item.id)

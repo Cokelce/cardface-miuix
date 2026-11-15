@@ -5,8 +5,6 @@ import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.Color
-import top.yukonga.miuix.kmp.icon.extended.GridView
-import top.yukonga.miuix.kmp.icon.extended.ListView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -114,7 +112,6 @@ fun CatalogScreen(
     var downloadState by remember { mutableStateOf<String?>(null) }
     var downloadJob by remember { mutableStateOf<Job?>(null) }
     var localRevision by remember { mutableIntStateOf(0) }
-    var groupByIp by rememberSaveable { mutableStateOf(false) }
     var showFilter by rememberSaveable { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -322,33 +319,13 @@ fun CatalogScreen(
                 }
 
                 item(span = { GridItemSpan(maxLineSpan) }, key = "status") {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.weight(1f)) {
-                            CatalogStatusLine(
-                                loading = loading,
-                                total = pageInfo?.total ?: 0,
-                                page = pageInfo?.page ?: page,
-                                pages = pageInfo?.pages ?: 1,
-                                cached = pageInfo?.cached == true,
-                            )
-                        }
-                        IconButton(onClick = { groupByIp = false }) {
-                            Icon(
-                                imageVector = MiuixIcons.GridView,
-                                contentDescription = "按图片排列",
-                                tint = if (!groupByIp) MiuixTheme.colorScheme.primary
-                                else MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            )
-                        }
-                        IconButton(onClick = { groupByIp = true }) {
-                            Icon(
-                                imageVector = MiuixIcons.ListView,
-                                contentDescription = "按 IP / 分类分组",
-                                tint = if (groupByIp) MiuixTheme.colorScheme.primary
-                                else MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            )
-                        }
-                    }
+                    CatalogStatusLine(
+                        loading = loading,
+                        total = pageInfo?.total ?: 0,
+                        page = pageInfo?.page ?: page,
+                        pages = pageInfo?.pages ?: 1,
+                        cached = pageInfo?.cached == true,
+                    )
                 }
             } else {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "status") {
@@ -399,45 +376,29 @@ fun CatalogScreen(
                 }
             }
 
-            if (groupByIp) {
-                // 保持首次出现的顺序，加载更多时新内容不会插到当前滚动位置上方。
-                val groups = browseItems.groupBy { it.subtitle.ifBlank { "其他" } }
-                groups.forEach { (group, list) ->
-                    item(span = { GridItemSpan(maxLineSpan) }, key = "group:$group") {
-                        Row(
-                            modifier = Modifier.padding(top = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = group,
-                                style = MiuixTheme.textStyles.headline2,
-                                fontWeight = FontWeight.Bold,
-                                color = MiuixTheme.colorScheme.onSurface,
-                            )
-                            Spacer(Modifier.size(8.dp))
-                            Text(
-                                text = "${list.size} 张",
-                                style = MiuixTheme.textStyles.footnote2,
-                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            )
-                        }
-                    }
-                    items(items = list, key = { it.key }) { item ->
-                        CatalogTile(
-                            item = item,
-                            localImage = repo.localImage(item),
-                            favorite = repo.isFavorite(item),
-                            onClick = { selected = item },
-                            onFavorite = {
-                                runCatching { repo.toggleFavorite(item) }
-                                    .onFailure { scope.launch { model.notify(it.message ?: "收藏失败") } }
-                                localRevision++
-                            },
+            // 固定按 IP / 银行 / 城市分组；保持首次出现顺序，加载更多不会插到上面。
+            val groups = browseItems.groupBy { it.subtitle.ifBlank { "其他" } }
+            groups.forEach { (group, list) ->
+                item(span = { GridItemSpan(maxLineSpan) }, key = "group:$group") {
+                    Row(
+                        modifier = Modifier.padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = group,
+                            style = MiuixTheme.textStyles.headline2,
+                            fontWeight = FontWeight.Bold,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        Spacer(Modifier.size(8.dp))
+                        Text(
+                            text = "${list.size} 张",
+                            style = MiuixTheme.textStyles.footnote2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
                     }
                 }
-            } else {
-                items(items = browseItems, key = { it.key }) { item ->
+                items(items = list, key = { it.key }) { item ->
                     CatalogTile(
                         item = item,
                         localImage = repo.localImage(item),
@@ -485,7 +446,9 @@ fun CatalogScreen(
             },
         ) {
             AppAsyncImage(
-                model = repo.localImage(current) ?: current.imageUrl,
+                model = repo.localImage(current)?.let { Uri.fromFile(it).toString() }
+                    ?: HibankCatalogSource.previewUrl(current.imageUrl),
+                fallbackModel = current.imageUrl,
                 contentDescription = current.title,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -698,7 +661,9 @@ private fun CatalogTile(
                 .clip(RoundedCornerShape(12.dp)),
         ) {
             AppAsyncImage(
-                model = localImage ?: item.imageUrl,
+                model = localImage?.let { Uri.fromFile(it).toString() }
+                    ?: HibankCatalogSource.thumbnailUrl(item.imageUrl),
+                fallbackModel = item.imageUrl,
                 contentDescription = item.title,
                 modifier = Modifier.fillMaxSize(),
                 backgroundBrush = cardThumbnailGradient(),
