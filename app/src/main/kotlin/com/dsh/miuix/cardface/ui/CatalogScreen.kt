@@ -2,6 +2,11 @@ package com.dsh.miuix.cardface.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.runtime.mutableStateListOf
+import top.yukonga.miuix.kmp.icon.extended.ExpandLess
+import top.yukonga.miuix.kmp.icon.extended.ExpandMore
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.Color
@@ -105,6 +110,7 @@ fun CatalogScreen(
     var page by remember { mutableIntStateOf(1) }
     var refresh by remember { mutableIntStateOf(0) }
     var items by remember { mutableStateOf<List<CatalogItem>>(emptyList()) }
+    var itemsCategory by remember { mutableStateOf<CatalogCategory?>(null) }
     var pageInfo by remember { mutableStateOf<CatalogPage?>(null) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -115,6 +121,7 @@ fun CatalogScreen(
     var generation by remember { mutableIntStateOf(0) }
     var loadMoreJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var showFilter by rememberSaveable { mutableStateOf(false) }
+    val collapsedGroups = remember { mutableStateListOf<String>() }
     val keyboard = LocalSoftwareKeyboardController.current
 
     fun applySearch() {
@@ -127,7 +134,10 @@ fun CatalogScreen(
 
     val category = CatalogCategory.entries[categoryIndex]
     val gridState = rememberLazyGridState()
-    val browseItems = if (mode == 0) items else remember(mode, localRevision) {
+    val browseItems = if (mode == 0) {
+        // 只展示当前分类的数据，防止切换分类瞬间旧分类条目串进来。
+        if (itemsCategory == category) items else emptyList()
+    } else remember(mode, localRevision) {
         if (mode == 1) repo.favorites() else repo.recents()
     }
 
@@ -153,6 +163,7 @@ fun CatalogScreen(
         loading = true
         error = null
         items = emptyList()
+        itemsCategory = null
         pageInfo = null
         page = 1
         try {
@@ -160,6 +171,7 @@ fun CatalogScreen(
                 repo.load(category, 1, appliedSearch, appliedFilter)
             }
             items = result.items
+            itemsCategory = category
             pageInfo = result
             gridState.scrollToItem(0)
         } catch (cancel: CancellationException) {
@@ -191,6 +203,7 @@ fun CatalogScreen(
                     repo.load(requestCategory, next, requestSearch, requestFilter)
                 }
                 if (requestGeneration != generation) return@launch
+                if (itemsCategory != requestCategory) return@launch
                 items = (items + result.items).distinctBy { it.key }
                 pageInfo = result
             } catch (cancel: CancellationException) {
@@ -204,7 +217,8 @@ fun CatalogScreen(
         }
     }
 
-    LaunchedEffect(mode) {
+    // 分类 / 搜索变化时必须重建这个 effect，否则闭包会拿着旧分类的 loadMore 往新列表里追加。
+    LaunchedEffect(mode, categoryIndex, appliedSearch, appliedFilter, refresh) {
         if (mode != 0) return@LaunchedEffect
         snapshotFlow {
             val info = gridState.layoutInfo
@@ -391,12 +405,20 @@ fun CatalogScreen(
                 }
             }
 
-            // 固定按 IP / 银行 / 城市分组；保持首次出现顺序，加载更多不会插到上面。
-            val groups = browseItems.groupBy { it.subtitle.ifBlank { "其他" } }
+            // 固定按 IP / 银行 / 城市分组；每组可点标题折叠。
+            val groups = browseItems.groupBy {
+                it.groupName.ifBlank { it.subtitle }.ifBlank { "其他" }
+            }
             groups.forEach { (group, list) ->
+                val collapsed = group in collapsedGroups
                 item(span = { GridItemSpan(maxLineSpan) }, key = "group:$group") {
                     Row(
-                        modifier = Modifier.padding(top = 4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (collapsed) collapsedGroups.remove(group) else collapsedGroups.add(group)
+                            }
+                            .padding(top = 6.dp, bottom = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
@@ -407,24 +429,33 @@ fun CatalogScreen(
                         )
                         Spacer(Modifier.size(8.dp))
                         Text(
-                            text = "${list.size} 张",
+                            text = if (collapsed) "${list.size} 张 · 已折叠" else "${list.size} 张",
                             style = MiuixTheme.textStyles.footnote2,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
+                        Spacer(Modifier.weight(1f))
+                        Icon(
+                            imageVector = if (collapsed) MiuixIcons.ExpandMore else MiuixIcons.ExpandLess,
+                            contentDescription = if (collapsed) "展开" else "折叠",
+                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.size(22.dp),
+                        )
                     }
                 }
-                items(items = list, key = { it.key }) { item ->
-                    CatalogTile(
-                        item = item,
-                        localImage = repo.localImage(item),
-                        favorite = repo.isFavorite(item),
-                        onClick = { selected = item },
-                        onFavorite = {
-                            runCatching { repo.toggleFavorite(item) }
-                                .onFailure { scope.launch { model.notify(it.message ?: "收藏失败") } }
-                            localRevision++
-                        },
-                    )
+                if (!collapsed) {
+                    items(items = list, key = { it.key }) { item ->
+                        CatalogTile(
+                            item = item,
+                            localImage = repo.localImage(item),
+                            favorite = repo.isFavorite(item),
+                            onClick = { selected = item },
+                            onFavorite = {
+                                runCatching { repo.toggleFavorite(item) }
+                                    .onFailure { scope.launch { model.notify(it.message ?: "收藏失败") } }
+                                localRevision++
+                            },
+                        )
+                    }
                 }
             }
 

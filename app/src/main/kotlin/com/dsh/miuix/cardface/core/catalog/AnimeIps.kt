@@ -13,7 +13,7 @@ object AnimeIps {
         "未定事件簿", "光与夜之恋", "奇迹暖暖", "恋与深空", "命运-冠位指定",
         "明日方舟", "少女前线2：追放", "蔚蓝档案", "碧蓝航线", "鸣潮",
         "重返未来：1999", "尘白禁区", "幻塔", "少女乐队的呐喊", "迷宫饭", "文豪野犬",
-        "名侦探柯南", "龙珠Z", "奥特曼", "假面骑士", "机动战士高达",
+        "名侦探柯南", "龙珠Z", "机动战士高达",
         "天官赐福动画", "狐妖小红娘", "赛尔号", "东方Project·不可思议的幻想乡",
         "沧元图", "牧神记", "人鱼陷落", "我家大师兄脑子有坑", "凸变英雄X",
         "雄狮少年2", "你的颜色", "海虎", "火凤燎原", "长歌行",
@@ -27,9 +27,12 @@ object AnimeIps {
     )
 
     private val keywords = listOf(
-        "初音", "碧蓝", "蔚蓝", "少女前线", "明日方舟", "崩坏", "原神", "鸣潮",
+        "初音", "碧蓝", "蔚蓝", "少女前线", "少前", "追放", "明日方舟", "崩坏", "原神", "鸣潮",
         "幻塔", "尘白", "无期迷途", "重返未来", "恋与", "未定事件簿", "偶像梦幻祭",
-        "光与夜", "奇迹暖暖", "命运-冠位", "FGO", "高达", "奥特曼", "假面骑士",
+        "光与夜", "奇迹暖暖", "命运-冠位", "FGO", "高达", "战双", "深空之眼", "阴阳师",
+        "第七史诗", "白荆回廊", "天气之子", "你的颜色", "剑与远征", "饼干人",
+        "哔哩哔哩", "乐正绫", "洛天依", "言和", "墨清弦", "伞少女梦谈", "龙族",
+        "未来有你", "茈凌", "bangdream", "BanG",
         "名侦探柯南", "龙珠", "迷宫饭", "文豪野犬", "天官赐福", "狐妖",
         "沧元图", "牧神记", "长歌行", "火凤燎原", "海虎", "凸变英雄",
         "雄狮少年", "你的颜色", "赛马娘", "孤独摇滚", "芙莉莲", "间谍过家家",
@@ -37,10 +40,47 @@ object AnimeIps {
         "VOCALOID", "Project SEKAI", "虚拟主播", "VTuber",
     )
 
-    fun isAnime(ipName: String): Boolean {
-        val name = ipName.trim()
+    fun isAnime(text: String): Boolean {
+        val name = text.trim()
         if (name.isEmpty()) return false
         if (name in exact) return true
         return keywords.any { name.contains(it, ignoreCase = true) }
+    }
+
+    /** 交通卡标题是「碧蓝档案-ユウカ」这种，归组时还原成 IP 名。 */
+    fun groupFor(title: String): String {
+        val rules = listOf(
+            "碧蓝档案" to listOf("碧蓝档案", "蔚蓝档案"),
+            "碧蓝航线" to listOf("碧蓝航线"),
+            "少女前线" to listOf("少前", "追放"),
+            "初音未来" to listOf("初音", "未来有你"),
+            "BanG Dream!" to listOf("bangdream", "BanG"),
+            "白荆回廊" to listOf("白荆回廊"),
+            "天气之子" to listOf("天气之子"),
+            "重返未来" to listOf("重返未来"),
+            "尘白禁区" to listOf("尘白"),
+            "你的颜色" to listOf("你的颜色"),
+            "剑与远征" to listOf("剑与远征"),
+            "哔哩哔哩" to listOf("哔哩哔哩"),
+            "崩坏" to listOf("崩坏"),
+            "冲呀！饼干人" to listOf("饼干人"),
+            "乐正绫" to listOf("乐正绫"),
+            "洛天依" to listOf("洛天依"),
+            "言和" to listOf("言和"),
+            "墨清弦" to listOf("墨清弦"),
+            "伞少女梦谈" to listOf("伞少女梦谈"),
+            "深空之眼" to listOf("深空之眼"),
+            "阴阳师" to listOf("阴阳师"),
+            "龙族" to listOf("龙族"),
+            "幻塔" to listOf("幻塔"),
+            "战双帕弥什" to listOf("战双"),
+            "第七史诗" to listOf("第七史诗"),
+            "鸣潮" to listOf("鸣潮"),
+            "茈凌" to listOf("茈凌"),
+        )
+        rules.forEach { (label, keys) ->
+            if (keys.any { title.contains(it, ignoreCase = true) }) return label
+        }
+        return title
     }
 }

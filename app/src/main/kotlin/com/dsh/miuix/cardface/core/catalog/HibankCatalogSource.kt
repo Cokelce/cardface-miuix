@@ -87,7 +87,7 @@ object HibankCatalogSource {
                 when (category) {
                     CatalogCategory.BANK -> "image"
                     CatalogCategory.TRANSIT -> "filename"
-                    CatalogCategory.IP, CatalogCategory.ANIME -> "productImagePath"
+                    CatalogCategory.IP, CatalogCategory.ANIME, CatalogCategory.TOKUSATSU -> "productImagePath"
                 },
             )
             val image = normalizeImageUrl(rawImage) ?: return@mapNotNull null
@@ -95,16 +95,16 @@ object HibankCatalogSource {
                 when (category) {
                     CatalogCategory.BANK -> "description"
                     CatalogCategory.TRANSIT -> "title"
-                    CatalogCategory.IP, CatalogCategory.ANIME -> "productName"
+                    CatalogCategory.IP, CatalogCategory.ANIME, CatalogCategory.TOKUSATSU -> "productName"
                 },
             ).trim().take(160).ifBlank { "未命名卡面" }
             val subtitle = when (category) {
                 CatalogCategory.BANK -> item.optJSONObject("issuer")?.optString("native_name").orEmpty()
                 CatalogCategory.TRANSIT -> item.optString("city")
-                CatalogCategory.IP, CatalogCategory.ANIME -> item.optString("ipName")
+                CatalogCategory.IP, CatalogCategory.ANIME, CatalogCategory.TOKUSATSU -> item.optString("ipName")
             }.trim().take(120)
             val id = item.optString(
-                if (category == CatalogCategory.IP || category == CatalogCategory.ANIME) "productId" else "id",
+                if (category == CatalogCategory.IP || category == CatalogCategory.ANIME || category == CatalogCategory.TOKUSATSU) "productId" else "id",
             ).takeIf { it.isNotBlank() && it != "null" } ?: sha1(image).take(16)
             CatalogItem(
                 id = id,
@@ -112,7 +112,7 @@ object HibankCatalogSource {
                 title = title,
                 subtitle = subtitle,
                 imageUrl = image,
-                source = if (category == CatalogCategory.IP || category == CatalogCategory.ANIME) {
+                source = if (category == CatalogCategory.IP || category == CatalogCategory.ANIME || category == CatalogCategory.TOKUSATSU) {
                     "IP 联动"
                 } else {
                     item.optString("source").take(100)
