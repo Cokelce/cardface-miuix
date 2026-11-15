@@ -166,20 +166,6 @@ fun CatalogScreen(
         }
     }
 
-    // 滚动到接近底部时自动加载下一页
-    LaunchedEffect(gridState, mode) {
-        if (mode != 0) return@LaunchedEffect
-        snapshotFlow {
-            val last = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            last to gridState.layoutInfo.totalItemsCount
-        }.collect { (last, total) ->
-            val info = pageInfo ?: return@collect
-            if (!loading && total > 0 && last >= total - 4 && page < info.pages) {
-                page++
-            }
-        }
-    }
-
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
@@ -358,6 +344,17 @@ fun CatalogScreen(
                         localRevision++
                     },
                 )
+            }
+
+            if (mode == 0 && pageInfo != null && page < (pageInfo?.pages ?: 1)) {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "more") {
+                    TextButton(
+                        text = if (loading) "正在加载…" else "加载更多（第 ${page + 1} / ${pageInfo?.pages ?: 1} 页）",
+                        onClick = { if (!loading) page++ },
+                        enabled = !loading,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
 
             item(span = { GridItemSpan(maxLineSpan) }, key = "attribution") {
