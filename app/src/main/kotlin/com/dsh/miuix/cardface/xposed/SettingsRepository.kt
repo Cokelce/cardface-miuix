@@ -4,8 +4,6 @@ import android.content.Context
 import android.content.SharedPreferences
 import android.database.ContentObserver
 import android.net.Uri
-import android.os.Handler
-import android.os.Looper
 import android.os.SystemClock
 import io.github.libxposed.api.XposedModule
 
@@ -45,12 +43,12 @@ class SettingsRepository(private val module: XposedModule) {
     private var snapshotState = com.dsh.miuix.cardface.core.MappingPolicy.State(emptyMap(), 0)
     @Volatile private var currentProviderState: com.dsh.miuix.cardface.core.MappingPolicy.State? = null
     @Volatile private var cachedProviderState: com.dsh.miuix.cardface.core.MappingPolicy.State? = null
-    private var snapshotReadAt = 0L
+    @Volatile private var snapshotReadAt = 0L
 
     @Volatile
     private var dirty = true
 
-    private var lastProviderReadMs = 0L
+    @Volatile private var lastProviderReadMs = 0L
 
     @Volatile
     private var lastHookAtWrittenMs = 0L
@@ -58,6 +56,8 @@ class SettingsRepository(private val module: XposedModule) {
     private var observerRegistered = false
 
     private val pendingNames = java.util.concurrent.ConcurrentHashMap<String, String>()
+    private val pendingCardUrls = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    private val cardUrlFlushQueued = java.util.concurrent.atomic.AtomicBoolean(false)
     private val savedNames = java.util.concurrent.ConcurrentHashMap<String, String>()
     private val nameFlushQueued = java.util.concurrent.atomic.AtomicBoolean(false)
     private val nameWorker = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
@@ -142,8 +142,14 @@ class SettingsRepository(private val module: XposedModule) {
     @Volatile private var sourceGroups: List<Set<String>> = emptyList()
     @Volatile private var assetOrigins: Map<String, Set<String>> = emptyMap()
     @Volatile private var replacementAssetKeys: Set<String> = emptySet()
-    private var sourceReadAt = 0L
+    @Volatile private var sourceReadAt = 0L
     private val observedSources = java.util.concurrent.ConcurrentHashMap<String, MutableSet<String>>()
+
+    private val refreshQueued = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val refreshRequested = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val refreshWorker = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(task, "cardface-settings").apply { isDaemon = true }
+    }
 
     fun reportSource(card: Any?, wallet: String, url: String) {
         val id = com.dsh.miuix.cardface.core.CardSourceIndex.stableId(card, wallet) ?: return
@@ -170,8 +176,13 @@ class SettingsRepository(private val module: XposedModule) {
     private fun refreshSources() {
         val now = SystemClock.elapsedRealtime()
         if (now - sourceReadAt < 2000L) return
+        requestRefresh()
+    }
+
+    private fun readSources(p: ProviderPrefs) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - sourceReadAt < 2000L) return
         sourceReadAt = now
-        val p = provider ?: return
         fun strings(value: Any?): Set<String>? = runCatching {
             when(value) {
                 is Set<*> -> value.filterIsInstance<String>().toSet()
@@ -184,16 +195,13 @@ class SettingsRepository(private val module: XposedModule) {
         p.readAll("replacement_assets")?.let { replacementAssetKeys = it.keys }
     }
 
-    fun isReplacementMaterial(url: String): Boolean {
-        refreshSources()
-        return com.dsh.miuix.cardface.core.ReplacementAssets.isKnown(url, mappings(), replacementAssetKeys, assetOrigins.keys)
-    }
+    fun isReplacementMaterial(url: String): Boolean =
+        com.dsh.miuix.cardface.core.ReplacementAssets.isKnown(url, cachedMappings(), replacementAssetKeys, assetOrigins.keys)
 
     fun originalForAsset(url: String): String? {
-        refreshSources()
         val key = com.dsh.miuix.cardface.core.CardRuntime.fingerprint(url)
         val nameKey = com.dsh.miuix.cardface.core.CardRuntime.fingerprint(url.substringAfterLast('/'))
-        return com.dsh.miuix.cardface.core.CardSourceIndex.originalForAsset(url, mappings(),
+        return com.dsh.miuix.cardface.core.CardSourceIndex.originalForAsset(url, cachedMappings(),
             assetOrigins[key].orEmpty() + assetOrigins[nameKey].orEmpty())
     }
 
@@ -218,14 +226,14 @@ class SettingsRepository(private val module: XposedModule) {
 
     fun attachContext(context: Context) {
         this.context = context.applicationContext ?: context
-        loadSnapshot()
-        val p = ProviderPrefs(this.context!!)
-        provider = p
+        // attachContext runs on cardface-context: publish local mappings before Provider IPC.
+        loadSnapshot(force = true)
+        provider = ProviderPrefs(this.context!!)
+        requestRefresh(force = true, initialize = true)
         flushRuntime()
         flushCardNames()
+        flushCardUrls()
         registerObserver()
-        refresh(force = true)
-        XLog.i("hook context ready, provider prefs readable=$providerReadable")
     }
 
     /** App 侧设置变化时，ContentObserver 只清缓存，下次拦截时重读。 */
@@ -233,9 +241,9 @@ class SettingsRepository(private val module: XposedModule) {
         val ctx = context ?: return
         if (observerRegistered) return
         try {
-            val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            val observer = object : ContentObserver(null) {
                 override fun onChange(selfChange: Boolean, uri: Uri?) {
-                    dirty = true
+                    requestRefresh(force = true)
                 }
             }
             ctx.contentResolver.registerContentObserver(
@@ -257,20 +265,48 @@ class SettingsRepository(private val module: XposedModule) {
     // ---------- 读 ----------
 
     fun refresh(force: Boolean = false) {
-        val now = SystemClock.elapsedRealtime()
-        if (!force && !dirty && now - lastProviderReadMs < PROVIDER_REFRESH_INTERVAL_MS) return
-        dirty = false
-        lastProviderReadMs = now
-        val p = provider ?: return
-        loadSnapshot()
-        val settings = p.readAll(GROUP_SETTINGS)
-        currentProviderState = settings?.let { stateOf(it) }
-        currentProviderState?.let { cachedProviderState = it }
-        val cards = p.readAll(GROUP_CARD_URLS)
-        if (settings != null || cards != null) {
-            if (settings != null) { providerReadable = true; providerSettings = settings }
-            if (cards != null) providerCardUrls = cards
-            XLog.d("provider prefs refreshed: settings=${providerSettings.size}, card_urls=${providerCardUrls.size}")
+        flushCardUrls()
+        if (force || dirty || SystemClock.elapsedRealtime() - lastProviderReadMs >= PROVIDER_REFRESH_INTERVAL_MS) {
+            requestRefresh(force = force)
+        }
+    }
+
+    private fun requestRefresh(force: Boolean = false, initialize: Boolean = false) {
+        if (force) dirty = true
+        refreshRequested.set(true)
+        if (!refreshQueued.compareAndSet(false, true)) return
+        val initializeNow = initialize
+        refreshWorker.execute {
+            var firstRead = initializeNow
+            try {
+                do {
+                    refreshRequested.set(false)
+                    val now = SystemClock.elapsedRealtime()
+                    val shouldRead = firstRead || dirty || now - lastProviderReadMs >= PROVIDER_REFRESH_INTERVAL_MS
+                    if (!shouldRead) continue
+                    dirty = false
+                    lastProviderReadMs = now
+                    loadSnapshot(force = firstRead)
+                    firstRead = false
+                    val p = provider ?: continue
+                    val settings = p.readAll(GROUP_SETTINGS)
+                    currentProviderState = settings?.let { stateOf(it) }
+                    currentProviderState?.let { cachedProviderState = it }
+                    val cards = p.readAll(GROUP_CARD_URLS)
+                    if (settings != null || cards != null) {
+                        if (settings != null) { providerReadable = true; providerSettings = settings }
+                        if (cards != null) providerCardUrls = cards
+                    }
+                    readSources(p)
+                    XLog.i("hook context ready, provider prefs readable=$providerReadable")
+                    flushCardUrls()
+                } while (refreshRequested.get())
+            } catch (t: Throwable) {
+                XLog.w("settings refresh failed", t)
+            } finally {
+                refreshQueued.set(false)
+                if (refreshRequested.get()) requestRefresh(force = dirty)
+            }
         }
     }
 
@@ -362,60 +398,79 @@ class SettingsRepository(private val module: XposedModule) {
     }
 
     /** settings 里除保留键外的 String 项 = url -> 替换值（文件名 / http 地址）。 */
-    fun mappings(): Map<String, String> {
-        loadSnapshot()
+    private fun cachedMappings(): Map<String, String> {
         val framework = try { frameworkSettings?.all?.let { stateOf(it) } }
             catch (_: Throwable) { null }
         val base = com.dsh.miuix.cardface.core.MappingPolicy.select(currentProviderState, framework,
             snapshotState, cachedProviderState).mappings
-        refreshSources()
         return com.dsh.miuix.cardface.core.CardSourceIndex.expand(base, sourceGroups)
+    }
+
+    fun mappings(): Map<String, String> {
+        refresh()
+        refreshSources()
+        return cachedMappings()
     }
 
     fun blacklist(): Set<String> = rawStringSet(KEY_BLACK_CARD_URLS)
 
-    fun cardUrls(): Set<String> = rawStringSet(KEY_ALL_CARD_URLS)
+    fun cardUrls(): Set<String> = rawStringSet(KEY_ALL_CARD_URLS) + pendingCardUrls
 
     // ---------- 写 ----------
 
-    /** 写回 settings.last_hook_at（节流，避免每张图都跨进程写）。 */
+    /** Queue the throttled status write so drawable/network callbacks never block on Provider IPC. */
     fun touchLastHookAt(force: Boolean = false) {
         val wall = System.currentTimeMillis()
-        if (!force && wall - lastHookAtWrittenMs < LAST_HOOK_AT_INTERVAL_MS) return
-        val p = provider ?: run {
-            XLog.d("no context yet, skip last_hook_at")
-            return
-        }
-        val ok = p.putLong(GROUP_SETTINGS, KEY_LAST_HOOK_AT, wall)
-        if (ok) {
+        synchronized(this) {
+            if (!force && wall - lastHookAtWrittenMs < LAST_HOOK_AT_INTERVAL_MS) return
             lastHookAtWrittenMs = wall
-            providerSettings = LinkedHashMap(providerSettings).apply { put(KEY_LAST_HOOK_AT, wall) }
-            XLog.d("last_hook_at updated")
-        } else {
-            XLog.w("write last_hook_at failed (provider not writable)")
+        }
+        nameWorker.execute {
+            val p = provider
+            val ok = p?.putLong(GROUP_SETTINGS, KEY_LAST_HOOK_AT, wall) == true
+            if (ok) {
+                providerSettings = LinkedHashMap(providerSettings).apply { put(KEY_LAST_HOOK_AT, wall) }
+                XLog.d("last_hook_at updated")
+            } else {
+                synchronized(this) { if (lastHookAtWrittenMs == wall) lastHookAtWrittenMs = 0L }
+                XLog.w("write last_hook_at failed (provider unavailable or not writable)")
+            }
         }
     }
 
     /** 把新 URL 加入 card_urls/all_card_url_set；已存在返回 false。 */
+    @Synchronized
     fun addCardUrl(url: String): Boolean {
         if (url.isEmpty() || isReplacementMaterial(url)) return false
-        refresh(force = true)
         val current = cardUrls()
-        if (url in current) return false
+        if (url in current || pendingCardUrls.contains(url)) return false
+        if (pendingCardUrls.size >= MAX_PENDING_CARD_URLS) return false
+        pendingCardUrls.add(url)
         val next = LinkedHashSet(current).apply { add(url) }
         providerCardUrls = LinkedHashMap(providerCardUrls).apply { put(KEY_ALL_CARD_URLS, next) }
-        val p = provider
-        if (p == null) {
-            XLog.w("no context yet, card url list not persisted")
-            return false
+        flushCardUrls()
+        return true
+    }
+
+    private fun flushCardUrls() {
+        if (pendingCardUrls.isEmpty() || provider == null || !cardUrlFlushQueued.compareAndSet(false, true)) return
+        nameWorker.execute {
+            var success = false
+            try {
+                val p = provider ?: return@execute
+                val batch = pendingCardUrls.toSet()
+                if (batch.isNotEmpty() && p.unionStringSet(GROUP_CARD_URLS, KEY_ALL_CARD_URLS, batch)) {
+                    batch.forEach { pendingCardUrls.remove(it) }
+                    sourceReadAt = 0L
+                    success = true
+                }
+            } catch (t: Throwable) {
+                XLog.w("card url union failed; retaining pending urls", t)
+            } finally {
+                cardUrlFlushQueued.set(false)
+                if (success && pendingCardUrls.isNotEmpty()) flushCardUrls()
+            }
         }
-        val ok = p.putStringSet(GROUP_CARD_URLS, KEY_ALL_CARD_URLS, next)
-        if (ok) {
-            XLog.i("card url added to list: $url (total=${next.size})")
-        } else {
-            XLog.w("write card url list failed (provider not writable)")
-        }
-        return ok
     }
 
     // ---------- 工具 ----------
@@ -466,6 +521,7 @@ class SettingsRepository(private val module: XposedModule) {
 
         private const val PROVIDER_REFRESH_INTERVAL_MS = 1500L
         private const val LAST_HOOK_AT_INTERVAL_MS = 2000L
+        private const val MAX_PENDING_CARD_URLS = 512
     }
 }
 

@@ -86,6 +86,11 @@ class NavState(initial: List<Route> = listOf(Route(Page.Home))) {
         routes = listOf(Route(page))
     }
 
+    fun openExternalEditor(url: String) {
+        direction = NavDirection.Tab
+        routes = listOf(Route(Page.Editor, url))
+    }
+
     internal fun restore(list: List<Route>) {
         routes = if (list.isEmpty()) listOf(Route(Page.Home)) else list
     }
@@ -105,6 +110,9 @@ enum class CropTarget { Editor, Gallery }
 
 /** 编辑页的草稿状态：跨页面（相册 → 裁剪 → 回到编辑）保留，所以放在 App 级。 */
 class EditorDraft(val url: String) {
+    var restoringBitmap by mutableStateOf(false)
+    var restoreFailed by mutableStateOf(false)
+
 
     /** 相册/裁剪流程得到的本地图；保存时交给 CardImaging 合成 960×606。 */
     var localUri by mutableStateOf<Uri?>(null)
@@ -139,6 +147,8 @@ class AppModel(context: Context) {
     val prefs = AppPrefs(this.context)
     val store = ImageStore(this.context)
     val snackbar = SnackbarHostState()
+    var draftBitmapPath: String? = null
+    var persistedDraftBitmap: android.graphics.Bitmap? = null
 
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -173,13 +183,22 @@ class AppModel(context: Context) {
     var cropBatchTotal by mutableStateOf(0)
     var cropBatchIndex by mutableStateOf(0)
 
+    fun savedCropQueue(): List<String> = cropQueue.take(100).map(Uri::toString)
+
+    fun restoreCropQueue(values: List<String>, total: Int, index: Int) {
+        cropQueue.clear()
+        cropQueue.addAll(DraftValidation.boundedQueue(values).map(Uri::parse))
+        cropBatchTotal = if (cropQueue.isEmpty()) 0 else total.coerceIn(cropQueue.size, 100)
+        cropBatchIndex = if (cropQueue.isEmpty()) 0 else index.coerceIn(1, cropBatchTotal)
+    }
+
     fun startCropBatch(target: CropTarget, uris: List<Uri>) {
         cropTarget = target
         cropQueue.clear()
-        cropQueue.addAll(uris)
-        cropBatchTotal = uris.size
-        cropBatchIndex = if (uris.isEmpty()) 0 else 1
-        cropUri = uris.firstOrNull()
+        cropQueue.addAll(uris.asSequence().filter { DraftValidation.validQueueUri(it.toString()) }.take(DraftValidation.MAX_CROP_QUEUE))
+        cropBatchTotal = cropQueue.size
+        cropBatchIndex = if (cropQueue.isEmpty()) 0 else 1
+        cropUri = cropQueue.firstOrNull()
     }
 
     /** 处理完当前张后切到下一张；没有下一张返回 false。 */
@@ -197,7 +216,17 @@ class AppModel(context: Context) {
     }
 
     fun openEditor(url: String) {
-        if (editor.url != url) editor = EditorDraft(url)
+        if (editor.url != url) {
+            draftBitmapPath = null
+            persistedDraftBitmap = null
+            editor = EditorDraft(url)
+        }
+    }
+
+    fun dispose() { uiScope.coroutineContext[kotlinx.coroutines.Job]?.cancel() }
+
+    fun openExternalEditor(url: String) {
+        openEditor(url)
     }
 
     fun startCrop(target: CropTarget) {

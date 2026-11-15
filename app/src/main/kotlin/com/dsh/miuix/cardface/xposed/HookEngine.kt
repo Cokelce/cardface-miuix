@@ -63,6 +63,10 @@ class HookEngine(
     private var pendingCustomHook = false
 
     fun start() {
+        if (osType == MethodLocator.OS_ONEPLUS) {
+            runCatching { DetailCoverHook(module, classLoader).install() }
+                .onFailure { XLog.w("detail cover hook install failed", it) }
+        }
         XLog.i("cardface hook starting: osType=$osType package=$walletPackage api=${module.apiVersion}")
         settingsRepo.init()
 
@@ -250,6 +254,7 @@ class HookEngine(
 
     /** OnePlus/ColorOS 5.52.0: capture original card URLs and reuse the full editor/map pipeline. */
     private fun installOnePlusHooks() {
+        installStableCardLoads()
         installKnownGlideLoaders()
         val targets = listOf(
             "com.nearme.wallet.db.NfcCard" to "getCardImg",
@@ -291,6 +296,7 @@ class HookEngine(
                 module.hook(method).intercept(object : XposedInterface.Hooker {
                     override fun intercept(chain: XposedInterface.Chain): Any? {
                         val rawUrl = chain.getArg(0) as? String ?: return chain.proceed()
+                        if (rawUrl.startsWith(UrlMapper.LOCAL_IMAGE_URI_PREFIX)) return chain.proceed()
                         settingsRepo.snapshot()
                         val url = settingsRepo.originalForAsset(rawUrl) ?: rawUrl
                         val hasMapping = UrlMapper.lookupMapping(url, settingsRepo.mappings()) != null
@@ -311,6 +317,78 @@ class HookEngine(
         }
     }
 
+    private data class LoadedCard(val url: String, val modified: Long, val drawable: java.lang.ref.WeakReference<android.graphics.drawable.Drawable>)
+    private val loadedCards = java.util.Collections.synchronizedMap(
+        java.util.WeakHashMap<android.widget.ImageView, LoadedCard>())
+
+    /** Keep successful local card content across the wallet's repeated initial data binds. */
+    private fun installStableCardLoads() {
+        runCatching {
+            val image = classLoader.loadClass("com.finshell.finui.widget.imageview.CircleNetworkImageView")
+            val getUrl = image.getMethod("getUrl")
+            val target = classLoader.loadClass("com.finshell.finui.widget.imageview.CircleNetworkImageView\$d")
+            val owner = target.getDeclaredField("c").apply { isAccessible = true }
+            val requestUrls = java.util.Collections.synchronizedMap(java.util.WeakHashMap<Any, String>())
+            target.declaredConstructors.forEach { constructor ->
+                module.hook(constructor).intercept(object : XposedInterface.Hooker {
+                    override fun intercept(chain: XposedInterface.Chain): Any? {
+                        val result = chain.proceed()
+                        val view = owner.get(chain.thisObject)
+                        (getUrl.invoke(view) as? String)?.let { requestUrls[chain.thisObject] = it }
+                        return result
+                    }
+                })
+            }
+            val delivered = target.getDeclaredMethod("h", android.graphics.drawable.Drawable::class.java)
+            module.hook(delivered).intercept(object : XposedInterface.Hooker {
+                override fun intercept(chain: XposedInterface.Chain): Any? {
+                    val result = chain.proceed()
+                    val view = owner.get(chain.thisObject) as android.widget.ImageView
+                    val url = requestUrls[chain.thisObject]
+                    val currentUrl = getUrl.invoke(view) as? String
+                    val drawable = chain.getArg(0) as? android.graphics.drawable.Drawable
+                    if (url != null && url == currentUrl && url.startsWith("file://$walletImagesDir/") && drawable != null && view.drawable === drawable) {
+                        loadedCards[view] = LoadedCard(url, File(android.net.Uri.parse(url).path.orEmpty()).lastModified(), java.lang.ref.WeakReference(drawable))
+                    } else loadedCards.remove(view)
+                    return result
+                }
+            })
+            val placeholder = image.getDeclaredMethod("getPlaceHolderDrawable").apply { isAccessible = true }
+            module.hook(placeholder).intercept(object : XposedInterface.Hooker {
+                override fun intercept(chain: XposedInterface.Chain): Any? {
+                    val view = chain.thisObject as android.widget.ImageView
+                    val loaded = loadedCards[view]
+                    val url = getUrl.invoke(view) as? String
+                    return if (loaded != null && loaded.url == url) loaded.drawable.get() ?: chain.proceed() else chain.proceed()
+                }
+            })
+            val load = image.declaredMethods.single { it.name == "g1" && it.parameterCount == 4 }
+            module.hook(load).intercept(object : XposedInterface.Hooker {
+                override fun intercept(chain: XposedInterface.Chain): Any? {
+                    val raw = chain.getArg(0) as? String ?: return chain.proceed()
+                    val view = chain.thisObject as android.widget.ImageView
+                    val original = settingsRepo.originalForAsset(raw) ?: raw
+                    val mapped = UrlMapper.lookupMapping(original, settingsRepo.mappings())
+                    val effective = if (mapped != null) replaceUrl(original, false).ifBlank { raw } else raw
+                    val loaded = loadedCards[view]
+                    if (loaded != null && loaded.url == effective && view.drawable != null && view.drawable === loaded.drawable.get() &&
+                        loaded.modified == File(android.net.Uri.parse(effective).path.orEmpty()).lastModified()) {
+                        // Only skip callback-free rebinds. Keep callback delivery and retry semantics intact.
+                        if (chain.getArg(3) == null) {
+                            XLog.d("same card request retained")
+                            return null
+                        }
+                    }
+                    if (loaded != null && loaded.url != effective) loadedCards.remove(view)
+                    val args = Array<Any?>(load.parameterCount) { chain.getArg(it) }
+                    args[0] = effective
+                    return chain.proceed(args)
+                }
+            })
+            XLog.i("stable card placeholders installed")
+        }.onFailure { XLog.w("stable card load hook unavailable", it) }
+    }
+
     private fun installKnownGlideLoaders() {
         for ((type, methodName) in listOf("com.bumptech.glide.j" to "r", "com.bumptech.glide.RequestManager" to "load")) {
             try {
@@ -319,6 +397,7 @@ class HookEngine(
                 module.hook(method).intercept(object : XposedInterface.Hooker {
                     override fun intercept(chain: XposedInterface.Chain): Any? {
                         val raw = chain.getArg(0) as? String ?: return chain.proceed()
+                        if (raw.startsWith(UrlMapper.LOCAL_IMAGE_URI_PREFIX)) return chain.proceed()
                         settingsRepo.snapshot()
                         val original = settingsRepo.originalForAsset(raw) ?: raw
                         val mapped = UrlMapper.lookupMapping(original, settingsRepo.mappings())
@@ -434,6 +513,7 @@ class HookEngine(
             val settings = settingsRepo.snapshot()
             val mappings = settingsRepo.mappings()
             if (settingsRepo.isReplacementMaterial(url)) return ""
+            val onePlusDisplayPath = osType == MethodLocator.OS_ONEPLUS && !trackNew
             val env = UrlMapper.Env(
                 isMiui = osType == MethodLocator.OS_MIUI,
                 showAllCards = settings.showAllCards,
@@ -442,7 +522,10 @@ class HookEngine(
                 blacklist = settingsRepo.blacklist(),
                 mappings = mappings,
                 walletImagesDir = walletImagesDir,
-                existingWalletImages = walletImageNames(),
+                existingWalletImages = if (onePlusDisplayPath) {
+                    val name = UrlMapper.lookupMapping(url, mappings)
+                    if (name != null && !name.contains('/') && File(walletImagesDir, name).let { it.isFile && it.length() > 0L }) setOf(name) else emptySet()
+                } else walletImageNames(),
             )
             val result = UrlMapper.map(url, env)
 

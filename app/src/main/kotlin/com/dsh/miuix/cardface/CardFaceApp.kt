@@ -58,7 +58,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
 import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
@@ -79,7 +78,55 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun CardFaceApp() {
     val context = LocalContext.current
-    val model = remember { AppModel(context) }
+    val activity = context as? MainActivity
+    val request = activity?.externalEditorRequest
+    val requestRevision = request?.revision ?: 0L
+    val externalUrl = request?.url
+    val restoration = remember { activity?.takeRestoredDraft() }
+    val model = remember {
+        AppModel(context).apply {
+            if (restoration != null && (request == null || requestRevision == restoration.getLong("cardface.pending_editor_revision"))) {
+                com.dsh.miuix.cardface.ui.EditorDraftState.restoreScalars(restoration, this)
+            } else externalUrl?.let { openEditor(it) }
+        }
+    }
+    androidx.compose.runtime.DisposableEffect(model, activity) {
+        activity?.activeModel = model
+        onDispose { if (activity?.activeModel === model) activity.activeModel = null }
+    }
+    LaunchedEffect(model) {
+        if (restoration != null && model.editor.localBitmap == null) {
+            val savedUrl = restoration.getString("cardface.draft.url")
+            if (savedUrl == model.editor.url) {
+                val path = model.draftBitmapPath
+                val draft = model.editor
+                try {
+                    val bitmap = com.dsh.miuix.cardface.ui.EditorDraftState.restoreBitmap(path)
+                    if (model.editor === draft && draft.localBitmap == null) {
+                        draft.localBitmap = bitmap
+                        draft.restoreFailed = bitmap == null && path != null
+                        model.persistedDraftBitmap = bitmap
+                        if (draft.restoreFailed) model.notify("草稿图片读取失败，请重新选择图片；裁剪与标志设置已保留")
+                    }
+                } finally {
+                    draft.restoringBitmap = false
+                }
+            }
+        }
+    }
+    LaunchedEffect(model, model.editor.localBitmap, model.editor.url) {
+        // Do not overwrite the saved bitmap while asynchronous restoration is still pending.
+        if (model.editor.localBitmap != null) {
+            val draft = model.editor
+            val bitmap = draft.localBitmap
+            val previousPath = model.draftBitmapPath
+            val path = com.dsh.miuix.cardface.ui.EditorDraftState.saveBitmap(context.cacheDir, bitmap, draft.url, previousPath)
+            if (model.editor === draft && draft.localBitmap === bitmap && path != null) {
+                model.draftBitmapPath = path
+                model.persistedDraftBitmap = bitmap
+            }
+        }
+    }
     androidx.compose.runtime.DisposableEffect(model) {
         val resolver = context.contentResolver
         val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
@@ -94,7 +141,7 @@ fun CardFaceApp() {
         resolver.registerContentObserver(android.net.Uri.parse("$root/runtime_health"), true, observer)
         resolver.registerContentObserver(android.net.Uri.parse("$root/card_sources"), true, observer)
         resolver.registerContentObserver(android.net.Uri.parse("$root/replacement_assets"), true, observer)
-        onDispose { resolver.unregisterContentObserver(observer) }
+        onDispose { resolver.unregisterContentObserver(observer); model.dispose() }
     }
 
 
@@ -126,24 +173,41 @@ fun CardFaceApp() {
         androidx.compose.runtime.CompositionLocalProvider(
             LocalAnimationsEnabled provides appearance.animations,
         ) {
-            CardFaceRoot(model, appearance.animations)
+            CardFaceRoot(model, appearance.animations, externalUrl, requestRevision, activity)
         }
     }
 }
 
 @Composable
-private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
+private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean, externalUrl: String?, requestRevision: Long, activity: MainActivity?) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val nav = rememberSaveable(saver = NavState.Saver) { NavState() }
+    val nav = rememberSaveable(saver = NavState.Saver) {
+        NavState(if (externalUrl != null) listOf(Route(Page.Editor, externalUrl)) else listOf(Route(Page.Home)))
+    }
+    val handledRequest = rememberSaveable { androidx.compose.runtime.mutableLongStateOf(requestRevision) }
+    LaunchedEffect(requestRevision, externalUrl) {
+        if (externalUrl != null) {
+            if (requestRevision != handledRequest.longValue || model.editor.url != externalUrl ||
+                (nav.current != Route(Page.Editor, externalUrl) && nav.current.page != Page.Crop)) {
+                model.openEditor(externalUrl)
+                nav.openExternalEditor(externalUrl)
+                handledRequest.longValue = requestRevision
+            }
+            activity?.consumeExternalRequest(requestRevision)
+        }
+    }
     val route = nav.current
+    remember(model, route.page, route.arg) {
+        if (route.page == Page.Editor) route.arg?.let { model.openEditor(it) }
+        true
+    }
     val currentPage = route.page
-
     BackHandler(enabled = nav.canGoBack) { nav.pop() }
 
     // 首次启动：直接进引导页（首页作为返回栈底，返回键不会退出应用）。
     LaunchedEffect(Unit) {
-        if (model.prefs.firstRun && nav.routes.size == 1) {
+        if (externalUrl == null && model.prefs.firstRun && nav.current.page == Page.Home && nav.routes.size == 1) {
             nav.push(Route(Page.Guide))
         }
     }
@@ -252,7 +316,7 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                     }
                 }
             },
-            contentKey = { it.page },
+            contentKey = { if (it.page == Page.Editor) it.encode() else it.page.name },
             label = "routeTransition",
         ) { targetRoute ->
             val page = targetRoute.page
@@ -263,7 +327,8 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                     innerPadding = innerPadding,
                     onOpenEditor = { url ->
                         model.openEditor(url)
-                        nav.push(Route(Page.Editor, url))
+                        if (nav.current.page == Page.Editor) nav.openExternalEditor(url)
+                        else nav.push(Route(Page.Editor, url))
                     },
                     onOpenGuide = { nav.push(Route(Page.Guide)) },
                 )
@@ -302,7 +367,7 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                     model = model,
                     onOpenOnline = { nav.push(Route(Page.Online)) },
                     innerPadding = innerPadding,
-                    onBack = { nav.pop() },
+                    onBack = { if (!nav.pop()) (context as? android.app.Activity)?.finish() },
                     onStartCrop = { uri ->
                         model.startCrop(CropTarget.Editor)
                         model.cropUri = uri

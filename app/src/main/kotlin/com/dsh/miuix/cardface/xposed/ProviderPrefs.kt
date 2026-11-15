@@ -1,6 +1,7 @@
 package com.dsh.miuix.cardface.xposed
 
 import android.content.ContentValues
+import android.os.Bundle
 import android.content.Context
 import android.net.Uri
 import com.dsh.miuix.cardface.core.HookPrefsProtocol
@@ -72,6 +73,23 @@ class ProviderPrefs(context: Context) {
 
     fun putStringSet(group: String, key: String, value: Set<String>): Boolean =
         bulkWrite(group, mapOf(key to HookPrefsProtocol.TYPE_STRING_SET to HookPrefsProtocol.encodeStringSet(value)))
+
+    /** Atomically unions [value] into a provider-owned StringSet without a read-modify-write IPC race. */
+    fun unionStringSet(group: String, key: String, value: Set<String>): Boolean = try {
+        val result = appContext.contentResolver.call(
+            groupUri(group),
+            HookPrefsProtocol.METHOD_UNION_STRING_SET,
+            group,
+            Bundle().apply {
+                putString(HookPrefsProtocol.ARG_KEY, key)
+                putString(HookPrefsProtocol.ARG_VALUE, HookPrefsProtocol.encodeStringSet(value))
+            },
+        )
+        result?.getBoolean(HookPrefsProtocol.RESULT_OK, false) == true
+    } catch (t: Throwable) {
+        XLog.w("provider union failed: $group/$key", t)
+        false
+    }
 
     /** 批量写入（一次 bulkInsert，provider 侧一次 commit）。 */
     fun bulkWrite(group: String, values: Map<Pair<String, Int>, Any?>): Boolean {

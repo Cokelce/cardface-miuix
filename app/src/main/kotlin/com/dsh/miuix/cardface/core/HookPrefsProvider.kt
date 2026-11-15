@@ -4,6 +4,7 @@ import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Context
 import android.content.SharedPreferences
+import android.os.Bundle
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.graphics.Bitmap
@@ -49,6 +50,11 @@ object HookPrefsProtocol {
     const val TYPE_LONG = 4
     const val TYPE_FLOAT = 5
     const val TYPE_BOOLEAN = 6
+
+    const val METHOD_UNION_STRING_SET = "unionStringSet"
+    const val ARG_KEY = "key"
+    const val ARG_VALUE = "value"
+    const val RESULT_OK = "ok"
 
     fun typeOf(value: Any?): Int = when (value) {
         null -> TYPE_NULL
@@ -118,6 +124,7 @@ object HookPrefsProtocol {
  */
 class HookPrefsProvider : ContentProvider(), SharedPreferences.OnSharedPreferenceChangeListener {
 
+    private val writeLock = Any()
     private val prefs = LinkedHashMap<String, SharedPreferences>()
 
     override fun onCreate(): Boolean {
@@ -166,49 +173,65 @@ class HookPrefsProvider : ContentProvider(), SharedPreferences.OnSharedPreferenc
         return cursor
     }
 
+    override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
+        if (method != HookPrefsProtocol.METHOD_UNION_STRING_SET) return super.call(method, arg, extras)
+        val group = arg ?: return Bundle().apply { putBoolean(HookPrefsProtocol.RESULT_OK, false) }
+        val sp = prefs[group] ?: return Bundle().apply { putBoolean(HookPrefsProtocol.RESULT_OK, false) }
+        val key = extras?.getString(HookPrefsProtocol.ARG_KEY)
+        val incoming = HookPrefsProtocol.decodeStringSet(extras?.getString(HookPrefsProtocol.ARG_VALUE))
+        val ok = synchronized(writeLock) {
+            if (key.isNullOrEmpty()) false else {
+                val merged = LinkedHashSet(sp.getStringSet(key, emptySet()).orEmpty())
+                merged.addAll(incoming)
+                sp.edit().putStringSet(key, merged).commit()
+            }
+        }
+        return Bundle().apply { putBoolean(HookPrefsProtocol.RESULT_OK, ok) }
+    }
+
     override fun getType(uri: Uri): String? = null
 
     // ---------- insert / bulkInsert ----------
 
-    override fun insert(uri: Uri, values: ContentValues?): Uri? {
-        if (values == null) return null
-        val parsed = parse(uri) ?: return null
-        val sp = prefs[parsed.prefName] ?: return null
+    override fun insert(uri: Uri, values: ContentValues?): Uri? = synchronized(writeLock) {
+        if (values == null) return@synchronized null
+        val parsed = parse(uri) ?: return@synchronized null
+        val sp = prefs[parsed.prefName] ?: return@synchronized null
         var key = values.getAsString(HookPrefsProtocol.COLUMN_KEY)?.takeIf { it.isNotEmpty() }
         if (parsed.key != null && key != null && parsed.key != key) {
             Log.w(TAG, "Conflicting keys specified in URI and ContentValues")
-            return null
+            return@synchronized null
         }
         if (key == null) key = parsed.key
         val editor = sp.edit()
-        if (!applyValue(editor, key, values)) return null
-        return if (editor.commit()) buildUri(parsed.prefName, key) else null
+        if (!applyValue(editor, key, values)) return@synchronized null
+        if (editor.commit()) buildUri(parsed.prefName, key) else null
     }
 
-    override fun bulkInsert(uri: Uri, values: Array<out ContentValues>): Int {
-        if (values.isEmpty()) return 0
-        val parsed = parse(uri) ?: return 0
-        val sp = prefs[parsed.prefName] ?: return 0
+    override fun bulkInsert(uri: Uri, values: Array<out ContentValues>): Int = synchronized(writeLock) {
+        if (values.isEmpty()) return@synchronized 0
+        val parsed = parse(uri) ?: return@synchronized 0
+        val sp = prefs[parsed.prefName] ?: return@synchronized 0
         if (parsed.key != null) {
             Log.w(TAG, "Cannot bulk insert with single key URI")
-            return 0
+            return@synchronized 0
         }
         val editor = sp.edit()
         for (cv in values) {
             val key = cv.getAsString(HookPrefsProtocol.COLUMN_KEY)?.takeIf { it.isNotEmpty() }
-            if (!applyValue(editor, key, cv)) return 0
+            if (!applyValue(editor, key, cv)) return@synchronized 0
         }
-        return if (editor.commit()) values.size else 0
+        if (editor.commit()) values.size else 0
     }
 
     // ---------- delete / update ----------
 
-    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int {
-        val parsed = parse(uri) ?: return 0
-        val sp = prefs[parsed.prefName] ?: return 0
+    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = synchronized(writeLock) {
+        val parsed = parse(uri) ?: return@synchronized 0
+        val sp = prefs[parsed.prefName] ?: return@synchronized 0
         val editor = sp.edit()
         if (parsed.key != null) editor.remove(parsed.key) else editor.clear()
-        return if (editor.commit()) 1 else 0
+        if (editor.commit()) 1 else 0
     }
 
     override fun update(

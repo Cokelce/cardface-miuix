@@ -100,18 +100,21 @@ fun EditorScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // 打开编辑页时：如果这个卡面已经用了图库图片，把它载入草稿，方便继续加标志/圆角后重新保存。
-    LaunchedEffect(url) {
+    LaunchedEffect(draft, draft.restoringBitmap) {
         val current = prefs.replacementFor(url)
-        if (draft.localBitmap == null && current != null && !DeviceBridge.isRemote(current)) {
-            loadedSavedBitmap = store.load(current)
-            draft.localBitmap = loadedSavedBitmap
-            draft.localCrop = null
+        if (!draft.restoringBitmap && !draft.restoreFailed && draft.localBitmap == null && current != null && !DeviceBridge.isRemote(current)) {
+            val loaded = store.load(current)
+            if (model.editor === draft && !draft.restoringBitmap && !draft.restoreFailed && draft.localBitmap == null && prefs.replacementFor(url) == current) {
+                loadedSavedBitmap = loaded
+                draft.localBitmap = loaded
+                draft.localCrop = null
+            }
         }
     }
 
     // 裁剪结果 + 标志/圆角变化 → 重新生成预览（等同最终输出）
     var previewBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
-    LaunchedEffect(draft.localBitmap, draft.localCrop, draft.logoAsset, draft.roundCorners) {
+    LaunchedEffect(draft, draft.localBitmap, draft.localCrop, draft.logoAsset, draft.roundCorners) {
         val source = draft.localBitmap
         previewBitmap = if (source == null) {
             null
@@ -124,7 +127,8 @@ fun EditorScreen(
                     roundCorners = draft.roundCorners,
                     logoAsset = draft.logoAsset,
                 ),
-            )
+            ).also { if (model.editor !== draft) it?.recycle() }
+                .takeIf { model.editor === draft }
         }
     }
 
@@ -148,10 +152,10 @@ fun EditorScreen(
                 withContext(Dispatchers.IO) {
                     com.dsh.miuix.cardface.core.ReplacementService.apply(context, prefs, store, url, value)
                 }
-                draft.clearPendingImage()
+                if (model.editor === draft) draft.clearPendingImage()
                 toast(if (value.isNullOrBlank()) "替换已清空，源图片保留；请重新打开钱包" else "映射与快照已保存，请打开钱包确认命中")
             } catch (t: Throwable) { errorMessage = t.message ?: "保存失败，原配置保留" }
-            finally { draft.saving = false }
+            finally { if (model.editor === draft) draft.saving = false }
         }
     }
 
@@ -169,6 +173,7 @@ fun EditorScreen(
                     logoAsset = draft.logoAsset,
                 ),
             )
+            if (model.editor !== draft) { bitmap?.recycle(); return@launch }
             if (bitmap == null) {
                 draft.saving = false
                 errorMessage = "图像合成失败：这张图可能已经损坏，换一张试试。"
@@ -179,12 +184,14 @@ fun EditorScreen(
                     store.saveApplied(bitmap, finalName)
                     com.dsh.miuix.cardface.core.ReplacementService.apply(context, prefs, store, url, finalName)
                 }
-                draft.clearPendingImage()
-                savedName = finalName
-                showSuccess = true
+                if (model.editor === draft) {
+                    draft.clearPendingImage()
+                    savedName = finalName
+                    showSuccess = true
+                }
             } catch (t: Throwable) {
                 errorMessage = t.message ?: "保存失败，原配置保留"
-            } finally { draft.saving = false }
+            } finally { if (model.editor === draft) draft.saving = false; bitmap.recycle() }
         }
     }
 
