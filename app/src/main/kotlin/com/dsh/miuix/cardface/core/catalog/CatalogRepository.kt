@@ -29,7 +29,25 @@ class CatalogRepository(context: Context) {
     // ---------- 目录 ----------
 
     suspend fun load(category: CatalogCategory, page: Int, search: String, filter: String): CatalogPage {
-        val url = HibankCatalogSource.queryUrl(category, page, search, filter)
+        val primary = loadQuery(
+            HibankCatalogSource.queryUrl(category, page, search, filter),
+            category,
+        )
+        // 搜索词在“卡面名”里找不到时，再按分类的第二个字段（银行/城市/IP 名）找一次。
+        if (primary.items.isEmpty() && search.isNotBlank()) {
+            val altUrl = HibankCatalogSource.queryUrl(
+                category, page, search, filter,
+                searchKeyOverride = category.alternateSearchKey,
+            )
+            runCatching { loadQuery(altUrl, category) }
+                .getOrNull()
+                ?.takeIf { it.items.isNotEmpty() }
+                ?.let { return it }
+        }
+        return primary
+    }
+
+    private suspend fun loadQuery(url: String, category: CatalogCategory): CatalogPage {
         val cacheFile = File(cacheDir, HibankCatalogSource.sha1(url).take(20) + ".json")
         return try {
             val text = requestText(url)

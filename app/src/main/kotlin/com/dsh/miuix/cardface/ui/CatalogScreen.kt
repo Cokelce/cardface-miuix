@@ -27,6 +27,9 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.ImeAction
+import top.yukonga.miuix.kmp.icon.extended.Filter
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -53,6 +57,7 @@ import com.dsh.miuix.cardface.core.catalog.HibankCatalogSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.Card
@@ -110,6 +115,16 @@ fun CatalogScreen(
     var downloadJob by remember { mutableStateOf<Job?>(null) }
     var localRevision by remember { mutableIntStateOf(0) }
     var groupByIp by rememberSaveable { mutableStateOf(false) }
+    var showFilter by rememberSaveable { mutableStateOf(false) }
+    val keyboard = LocalSoftwareKeyboardController.current
+
+    fun applySearch() {
+        appliedSearch = search.trim()
+        appliedFilter = filter.trim()
+        page = 1
+        refresh++
+        keyboard?.hide()
+    }
 
     val category = CatalogCategory.entries[categoryIndex]
     val gridState = rememberLazyGridState()
@@ -151,25 +166,40 @@ fun CatalogScreen(
     }
 
     // 翻页：只追加，不打断已加载内容
-    LaunchedEffect(page) {
-        if (mode != 0 || page <= 1) return@LaunchedEffect
-        val info = pageInfo ?: return@LaunchedEffect
-        if (page > info.pages) return@LaunchedEffect
+    // 接近底部时自动加载下一页；追加在下方，不调整滚动位置，列表自然向下延伸。
+    fun loadMore() {
+        if (mode != 0 || loading) return
+        val info = pageInfo ?: return
+        if (page >= info.pages) return
         loading = true
         error = null
-        try {
-            val result = withContext(Dispatchers.IO) {
-                repo.load(category, page, appliedSearch, appliedFilter)
+        val next = page + 1
+        page = next
+        scope.launch {
+            try {
+                val result = withContext(Dispatchers.IO) {
+                    repo.load(category, next, appliedSearch, appliedFilter)
+                }
+                items = (items + result.items).distinctBy { it.key }
+                pageInfo = result
+            } catch (cancel: CancellationException) {
+                throw cancel
+            } catch (t: Throwable) {
+                error = t.message ?: "加载下一页失败"
+                page = (next - 1).coerceAtLeast(1)
+            } finally {
+                loading = false
             }
-            val merged = (items + result.items).distinctBy { it.key }
-            items = merged
-            pageInfo = result
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (t: Throwable) {
-            error = t.message ?: "加载下一页失败"
-        } finally {
-            loading = false
+        }
+    }
+
+    LaunchedEffect(mode) {
+        if (mode != 0) return@LaunchedEffect
+        snapshotFlow {
+            val info = gridState.layoutInfo
+            (info.visibleItemsInfo.lastOrNull()?.index ?: 0) to info.totalItemsCount
+        }.distinctUntilChanged().collect { (last, total) ->
+            if (total > 0 && last >= total - 5) loadMore()
         }
     }
 
@@ -198,12 +228,6 @@ fun CatalogScreen(
                             )
                         }
                     }
-                    Text(
-                        text = "银行卡面 / 交通卡面 / IP 联动，选中后下载到本地再裁剪应用",
-                        style = MiuixTheme.textStyles.footnote1,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-                    )
                 }
             }
 
@@ -221,10 +245,16 @@ fun CatalogScreen(
                         items = CatalogCategory.entries.map { it.label },
                         selected = categoryIndex,
                         onSelected = { index ->
-                            categoryIndex = index
-                            filter = ""
-                            appliedFilter = ""
-                            page = 1
+                            if (index != categoryIndex) {
+                                categoryIndex = index
+                                search = ""
+                                filter = ""
+                                appliedSearch = ""
+                                appliedFilter = ""
+                                showFilter = false
+                                page = 1
+                                refresh++
+                            }
                         },
                     )
                 }
@@ -232,55 +262,65 @@ fun CatalogScreen(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         cornerRadius = 18.dp,
-                        insideMargin = PaddingValues(14.dp),
+                        insideMargin = PaddingValues(12.dp),
                     ) {
-                        TextField(
-                            value = search,
-                            onValueChange = { search = it.take(120) },
-                            label = "卡面名称",
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        TextField(
-                            value = filter,
-                            onValueChange = { filter = it.take(120) },
-                            label = category.filterLabel,
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
-                        )
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
                         ) {
-                            TextButton(
-                                text = "重置",
-                                onClick = {
-                                    search = ""
-                                    filter = ""
-                                    appliedSearch = ""
-                                    appliedFilter = ""
-                                    page = 1
-                                    refresh++
-                                },
+                            TextField(
+                                value = search,
+                                onValueChange = { search = it.take(120) },
+                                label = "搜索卡面名称",
+                                singleLine = true,
                                 modifier = Modifier.weight(1f),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                keyboardActions = KeyboardActions(onSearch = { applySearch() }),
                             )
-                            TextButton(
-                                text = "搜索",
+                            IconButton(onClick = { applySearch() }) {
+                                Icon(
+                                    imageVector = MiuixIcons.Search,
+                                    contentDescription = "搜索",
+                                    tint = MiuixTheme.colorScheme.onSurface,
+                                )
+                            }
+                            IconButton(
                                 onClick = {
-                                    appliedSearch = search.trim()
-                                    appliedFilter = filter.trim()
-                                    page = 1
-                                    refresh++
+                                    showFilter = !showFilter
+                                    if (!showFilter) {
+                                        filter = ""
+                                        if (appliedFilter.isNotEmpty()) applySearch()
+                                    }
                                 },
-                                modifier = Modifier.weight(1f),
+                            ) {
+                                Icon(
+                                    imageVector = MiuixIcons.Filter,
+                                    contentDescription = "筛选",
+                                    tint = if (showFilter || appliedFilter.isNotBlank()) {
+                                        MiuixTheme.colorScheme.primary
+                                    } else {
+                                        MiuixTheme.colorScheme.onSurfaceVariantSummary
+                                    },
+                                )
+                            }
+                        }
+                        if (showFilter) {
+                            TextField(
+                                value = filter,
+                                onValueChange = { filter = it.take(120) },
+                                label = category.filterLabel,
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp),
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(onDone = { applySearch() }),
                             )
                         }
                     }
                 }
+
                 item(span = { GridItemSpan(maxLineSpan) }, key = "status") {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) {
@@ -360,9 +400,8 @@ fun CatalogScreen(
             }
 
             if (groupByIp) {
-                val groups = browseItems
-                    .groupBy { it.subtitle.ifBlank { "其他" } }
-                    .toSortedMap(compareBy { if (it == "其他") "\uffff" else it })
+                // 保持首次出现的顺序，加载更多时新内容不会插到当前滚动位置上方。
+                val groups = browseItems.groupBy { it.subtitle.ifBlank { "其他" } }
                 groups.forEach { (group, list) ->
                     item(span = { GridItemSpan(maxLineSpan) }, key = "group:$group") {
                         Row(
@@ -413,28 +452,20 @@ fun CatalogScreen(
                 }
             }
 
-            if (mode == 0 && pageInfo != null && page < (pageInfo?.pages ?: 1)) {
-                item(span = { GridItemSpan(maxLineSpan) }, key = "more") {
-                    TextButton(
-                        text = if (loading) "正在加载…" else "加载更多（第 ${page + 1} / ${pageInfo?.pages ?: 1} 页）",
-                        onClick = { if (!loading) page++ },
-                        enabled = !loading,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
-            }
-
-            item(span = { GridItemSpan(maxLineSpan) }, key = "attribution") {
-                Column(Modifier.padding(top = 8.dp)) {
+            if (mode == 0 && pageInfo != null) {
+                item(span = { GridItemSpan(maxLineSpan) }, key = "footer") {
                     Text(
-                        text = "卡面图来自 Hibank（hi.my-api.cn），版权归原权利人所有，仅供个人使用。",
+                        text = when {
+                            loading -> "正在加载更多…"
+                            page >= (pageInfo?.pages ?: 1) -> "已经到底了"
+                            else -> "上拉加载更多"
+                        },
                         style = MiuixTheme.textStyles.footnote2,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    TextButton(
-                        text = "打开来源网站",
-                        onClick = { openSite() },
-                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp),
                     )
                 }
             }
@@ -446,11 +477,9 @@ fun CatalogScreen(
         OverlayDialog(
             show = true,
             title = current.title,
-            summary = listOf(
-                current.subtitle,
-                current.source,
-                "来源：Hibank · 图片版权归原权利人所有",
-            ).filter { it.isNotBlank() }.joinToString("\n"),
+            summary = listOf(current.subtitle, current.source)
+                .filter { it.isNotBlank() }
+                .joinToString("\n"),
             onDismissRequest = {
                 if (downloadState == null) selected = null
             },

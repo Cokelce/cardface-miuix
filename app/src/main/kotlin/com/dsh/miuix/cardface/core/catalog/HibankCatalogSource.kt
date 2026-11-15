@@ -18,7 +18,13 @@ object HibankCatalogSource {
     private const val API_HOST = "hi.my-api.cn"
     private const val IMAGE_HOST = "storage.my-api.cn"
 
-    fun queryUrl(category: CatalogCategory, page: Int, search: String, filter: String): String {
+    fun queryUrl(
+        category: CatalogCategory,
+        page: Int,
+        search: String,
+        filter: String,
+        searchKeyOverride: String? = null,
+    ): String {
         require(page in 1..10_000) { "页码异常" }
         require(search.length <= 120 && filter.length <= 120) { "搜索内容过长" }
         val params = linkedMapOf(
@@ -26,7 +32,7 @@ object HibankCatalogSource {
             "page" to page.toString(),
             "page_size" to PAGE_SIZE.toString(),
         )
-        if (search.isNotBlank()) params[category.searchKey] = search.trim()
+        if (search.isNotBlank()) params[searchKeyOverride ?: category.searchKey] = search.trim()
         if (filter.isNotBlank()) params[category.filterKey] = filter.trim()
         return "https://$API_HOST/api/?" + params.entries.joinToString("&") {
             "${it.key}=${URLEncoder.encode(it.value, "UTF-8")}"
