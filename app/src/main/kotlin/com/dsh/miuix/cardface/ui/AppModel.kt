@@ -31,6 +31,7 @@ enum class Page(val route: String, val title: String) {
     Faq("faq", "常见问题"),
     About("about", "关于与捐赠"),
     Blacklist("blacklist", "卡面黑名单"),
+    Catalog("catalog", "卡面库"),
     DevHook("hook", "自定义 hook 点"),
     DevConsole("console", "诊断终端"),
     ;
@@ -157,6 +158,14 @@ class AppModel(context: Context) {
 
     fun bumpStore() {
         storeRevision++
+    }
+
+    /** 卡面库选图后是否回到编辑页（false 表示存进图库）。 */
+    var catalogForEditor by mutableStateOf(false)
+        private set
+
+    fun openCatalog(target: CropTarget) {
+        catalogForEditor = target == CropTarget.Editor
     }
 
     /** 当前裁剪任务来自哪里。 */

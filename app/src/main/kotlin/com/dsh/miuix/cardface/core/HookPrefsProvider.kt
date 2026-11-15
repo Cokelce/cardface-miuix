@@ -127,9 +127,12 @@ class HookPrefsProvider : ContentProvider(), SharedPreferences.OnSharedPreferenc
             sp.registerOnSharedPreferenceChangeListener(this)
             prefs[name] = sp
         }
-        // 测试模式要返回一张固定测试图：provider 初始化时顺手保证它存在（不需要 root）。
+        // 测试图只给开发模式用：正式用户不生成任何测试图片。
         try {
-            ensureTestImage(ctx)
+            val settings = ctx.getSharedPreferences("settings", Context.MODE_PRIVATE)
+            if (settings.getBoolean("dev_mode", false) && settings.getBoolean("test_mode", false)) {
+                ensureTestImage(ctx)
+            }
         } catch (t: Throwable) {
             Log.w(TAG, "ensure test image failed: $t")
         }

@@ -19,11 +19,27 @@ class MainActivity : ComponentActivity() {
         try {
             val prefs = com.dsh.miuix.cardface.core.AppPrefs(this)
             com.dsh.miuix.cardface.core.PackageOps.ensureLauncherMatchesPrefs(this, prefs.hideIcon)
+            cleanupTestAssets(prefs)
             if (prefs.hideIcon) {
                 com.dsh.miuix.cardface.core.PackageOps.postHiddenEntryNotification(this)
             }
         } catch (_: Throwable) {
         }
         setContent { CardFaceApp() }
+    }
+
+    /** 一次性清掉历史版本自动生成的测试图 / 演示图，正式包图库保持干净。 */
+    private fun cleanupTestAssets(prefs: com.dsh.miuix.cardface.core.AppPrefs) {
+        val marker = getSharedPreferences("maintenance", MODE_PRIVATE)
+        if (marker.getBoolean("test_assets_cleaned_v1", false)) return
+        runCatching {
+            val store = com.dsh.miuix.cardface.core.ImageStore(this)
+            store.dir.listFiles { f ->
+                f.isFile && (f.name == "cardface-test.png" || f.name.startsWith("demo-card-"))
+            }?.forEach { it.delete() }
+            val demoUrls = prefs.allCardUrls().filter { it.startsWith("https://demo.cardface.local/") }
+            prefs.removeCardUrls(demoUrls)
+            marker.edit().putBoolean("test_assets_cleaned_v1", true).apply()
+        }
     }
 }

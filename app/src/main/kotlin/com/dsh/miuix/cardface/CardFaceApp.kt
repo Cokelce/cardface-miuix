@@ -37,6 +37,7 @@ import com.dsh.miuix.cardface.ui.AppModel
 import com.dsh.miuix.cardface.ui.AboutScreen
 import com.dsh.miuix.cardface.ui.BlacklistScreen
 import com.dsh.miuix.cardface.ui.CardImaging
+import com.dsh.miuix.cardface.ui.CatalogScreen
 import com.dsh.miuix.cardface.ui.CropScreen
 import com.dsh.miuix.cardface.ui.CropTarget
 import com.dsh.miuix.cardface.ui.DevConsoleScreen
@@ -249,6 +250,10 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                         nav.push(Route(Page.Editor, url))
                     },
                     onOpenGuide = { nav.push(Route(Page.Guide)) },
+                    onOpenCatalog = {
+                        model.openCatalog(CropTarget.Gallery)
+                        nav.push(Route(Page.Catalog))
+                    },
                 )
 
                 Page.Gallery -> GalleryScreen(
@@ -278,6 +283,27 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                     onStartCrop = { uri ->
                         model.startCrop(CropTarget.Editor)
                         model.cropUri = uri
+                        nav.push(Route(Page.Crop))
+                    },
+                    onOpenCatalog = {
+                        model.openCatalog(CropTarget.Editor)
+                        nav.push(Route(Page.Catalog))
+                    },
+                )
+
+                Page.Catalog -> CatalogScreen(
+                    model = model,
+                    innerPadding = innerPadding,
+                    onBack = { nav.pop() },
+                    onUse = { uri ->
+                        val forEditor = model.catalogForEditor
+                        nav.pop()
+                        if (forEditor) {
+                            model.startCrop(CropTarget.Editor)
+                            model.cropUri = uri
+                        } else {
+                            model.startCropBatch(CropTarget.Gallery, listOf(uri))
+                        }
                         nav.push(Route(Page.Crop))
                     },
                 )

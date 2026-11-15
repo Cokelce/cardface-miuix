@@ -87,7 +87,11 @@ fun GalleryScreen(
     val images = remember(revision, tick) {
         runCatching {
             val applied = model.prefs.mappedImageNames().toSet()
-            model.store.list().filterNot { it.name in applied }
+            model.store.list().filterNot {
+                it.name in applied ||
+                    it.name == "cardface-test.png" ||
+                    it.name.startsWith("demo-card-")
+            }
         }.getOrDefault(emptyList())
     }
 

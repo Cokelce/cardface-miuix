@@ -62,6 +62,7 @@ import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Album
 import top.yukonga.miuix.kmp.icon.extended.Photos
+import top.yukonga.miuix.kmp.icon.extended.Store
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -76,6 +77,7 @@ fun EditorScreen(
     innerPadding: PaddingValues,
     onBack: () -> Unit,
     onStartCrop: (Uri) -> Unit,
+    onOpenCatalog: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val prefs = model.prefs
@@ -336,6 +338,12 @@ fun EditorScreen(
                         icon = MiuixIcons.Photos,
                         label = "从图库选",
                         onClick = { showGallerySheet = true },
+                        modifier = Modifier.weight(1f),
+                    )
+                    ActionTile(
+                        icon = MiuixIcons.Store,
+                        label = "卡面库",
+                        onClick = onOpenCatalog,
                         modifier = Modifier.weight(1f),
                     )
                 }

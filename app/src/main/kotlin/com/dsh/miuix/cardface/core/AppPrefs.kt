@@ -87,6 +87,11 @@ class AppPrefs(context: Context) {
         get() = settings.getBoolean(KEY_DEV_MODE, false)
         set(v) = settings.edit().putBoolean(KEY_DEV_MODE, v).apply().also { touch() }
 
+    /** 是否在首页/编辑页显示「卡面库」入口（第三方在线图片源，可关闭）。 */
+    var catalogEnabled: Boolean
+        get() = settings.getBoolean("catalog_enabled", true)
+        set(v) = settings.edit().putBoolean("catalog_enabled", v).apply().also { touch() }
+
     /** 启动时自动检查 GitHub 最新版本（可在关于页关掉）。 */
     var autoCheckUpdate: Boolean
         get() = settings.getBoolean("auto_check_update", true)
@@ -275,6 +280,15 @@ class AppPrefs(context: Context) {
         .distinct()
 
     fun replacedCount(): Int = allCardUrls().count { !replacementFor(it).isNullOrBlank() }
+
+    /** 从卡面列表移除指定 URL（不触碰其它卡面）。 */
+    fun removeCardUrls(toRemove: Collection<String>) {
+        if (toRemove.isEmpty()) return
+        val next = allCardUrls().filterNot { it in toRemove }
+        urls.edit().putStringSet(KEY_ALL_CARD_URLS, next.toSet()).apply()
+        toRemove.forEach { setReplacement(it, null) }
+        touch()
+    }
 
     fun clearCardUrls() {
         urls.edit().clear().apply()

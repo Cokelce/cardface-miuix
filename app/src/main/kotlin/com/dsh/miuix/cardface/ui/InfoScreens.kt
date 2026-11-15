@@ -426,6 +426,11 @@ fun AboutScreen(
                 ) {
                     AboutLine("本应用", "卡面工坊 · Miuix 重制版，以 GPL-3.0 许可证开源发布。")
                     AboutLine(
+                        "在线卡面来源",
+                        "卡面库图片来自 Hibank（hi.my-api.cn），版权归原权利人所有，仅供个人使用；" +
+                            "应用不镜像、不打包这些图片，只在需要时下载到本机。",
+                    )
+                    AboutLine(
                         "原版项目",
                         "「DIY NFC卡面图片」v2.4，作者 zhizi42，GPL-3.0；" +
                             "github.com/Xposed-Modules-Repo/com.zhizi42.diymiuicard",

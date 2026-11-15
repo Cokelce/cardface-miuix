@@ -56,6 +56,7 @@ import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Help
 import top.yukonga.miuix.kmp.icon.extended.Hide
 import top.yukonga.miuix.kmp.icon.extended.Image
+import top.yukonga.miuix.kmp.icon.extended.Store
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Notes
@@ -256,6 +257,14 @@ fun SettingsScreen(
                     summary = "关闭时会过滤小图（w270h480 / logo / Mibi）",
                     checked = prefs.showAllCards,
                     onCheckedChange = { prefs.showAllCards = it },
+                )
+                RowDivider()
+                SwitchPreference(
+                    title = "显示卡面库入口",
+                    startAction = { SettingRowIcon(MiuixIcons.Store) },
+                    summary = "在线卡面库（Hibank 图片源），关闭后首页/编辑页隐藏入口",
+                    checked = prefs.catalogEnabled,
+                    onCheckedChange = { prefs.catalogEnabled = it },
                 )
                 RowDivider()
                 ArrowPreference(
