@@ -112,6 +112,8 @@ fun CatalogScreen(
     var downloadState by remember { mutableStateOf<String?>(null) }
     var downloadJob by remember { mutableStateOf<Job?>(null) }
     var localRevision by remember { mutableIntStateOf(0) }
+    var generation by remember { mutableIntStateOf(0) }
+    var loadMoreJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var showFilter by rememberSaveable { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -140,7 +142,14 @@ fun CatalogScreen(
 
     // 浏览模式：分类/搜索变化时重新加载第一页
     LaunchedEffect(categoryIndex, appliedSearch, appliedFilter, refresh, mode) {
-        if (mode != 0) return@LaunchedEffect
+        if (mode != 0) {
+            loadMoreJob?.cancel()
+            loading = false
+            return@LaunchedEffect
+        }
+        generation++
+        loadMoreJob?.cancel()
+        loadMoreJob = null
         loading = true
         error = null
         items = emptyList()
@@ -172,11 +181,16 @@ fun CatalogScreen(
         error = null
         val next = page + 1
         page = next
-        scope.launch {
+        val requestGeneration = generation
+        val requestCategory = category
+        val requestSearch = appliedSearch
+        val requestFilter = appliedFilter
+        loadMoreJob = scope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    repo.load(category, next, appliedSearch, appliedFilter)
+                    repo.load(requestCategory, next, requestSearch, requestFilter)
                 }
+                if (requestGeneration != generation) return@launch
                 items = (items + result.items).distinctBy { it.key }
                 pageInfo = result
             } catch (cancel: CancellationException) {
@@ -196,7 +210,8 @@ fun CatalogScreen(
             val info = gridState.layoutInfo
             (info.visibleItemsInfo.lastOrNull()?.index ?: 0) to info.totalItemsCount
         }.distinctUntilChanged().collect { (last, total) ->
-            if (total > 0 && last >= total - 5) loadMore()
+            // 必须已经滚动过（不在顶部）才自动翻页，避免刚打开就自己加载第二页。
+            if (gridState.firstVisibleItemIndex > 0 && total > 0 && last >= total - 5) loadMore()
         }
     }
 
