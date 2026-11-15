@@ -86,7 +86,6 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Refresh
-import top.yukonga.miuix.kmp.icon.extended.Store
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -99,7 +98,6 @@ fun HomeScreen(
     innerPadding: PaddingValues,
     onOpenEditor: (String) -> Unit,
     onOpenGuide: () -> Unit,
-    onOpenCatalog: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val prefs = model.prefs
@@ -161,15 +159,6 @@ fun HomeScreen(
                     subtitle = "把卡包里千篇一律的卡面换成你喜欢的图",
                     contentPadding = PaddingValues(start = 4.dp, end = 2.dp, top = 14.dp, bottom = 10.dp),
                 ) {
-                    if (prefs.catalogEnabled) {
-                        IconButton(onClick = onOpenCatalog) {
-                            Icon(
-                                imageVector = MiuixIcons.Store,
-                                contentDescription = "卡面库",
-                                tint = MiuixTheme.colorScheme.onBackground,
-                            )
-                        }
-                    }
                     IconButton(onClick = { isRefreshing = true }) {
                         Icon(
                             imageVector = MiuixIcons.Refresh,

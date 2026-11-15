@@ -61,6 +61,7 @@ import top.yukonga.miuix.kmp.icon.extended.Clear
 import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Photos
+import top.yukonga.miuix.kmp.icon.extended.Store
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -71,6 +72,7 @@ fun GalleryScreen(
     model: AppModel,
     innerPadding: PaddingValues,
     onPickForCrop: (List<android.net.Uri>) -> Unit,
+    onOpenCatalog: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -121,6 +123,15 @@ fun GalleryScreen(
                     subtitle = "已保存 ${images.size} 张替换图",
                     contentPadding = PaddingValues(start = 4.dp, end = 2.dp, top = 14.dp, bottom = 10.dp),
                 ) {
+                    if (model.prefs.catalogEnabled) {
+                        IconButton(onClick = onOpenCatalog) {
+                            Icon(
+                                imageVector = MiuixIcons.Store,
+                                contentDescription = "卡面库",
+                                tint = MiuixTheme.colorScheme.onBackground,
+                            )
+                        }
+                    }
                     IconButton(
                         onClick = {
                             picker.launch(

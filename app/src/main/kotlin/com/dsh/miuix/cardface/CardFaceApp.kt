@@ -250,10 +250,6 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                         nav.push(Route(Page.Editor, url))
                     },
                     onOpenGuide = { nav.push(Route(Page.Guide)) },
-                    onOpenCatalog = {
-                        model.openCatalog(CropTarget.Gallery)
-                        nav.push(Route(Page.Catalog))
-                    },
                 )
 
                 Page.Gallery -> GalleryScreen(
@@ -262,6 +258,10 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                     onPickForCrop = { uris ->
                         model.startCropBatch(CropTarget.Gallery, uris)
                         if (uris.isNotEmpty()) nav.push(Route(Page.Crop))
+                    },
+                    onOpenCatalog = {
+                        model.openCatalog(CropTarget.Gallery)
+                        nav.push(Route(Page.Catalog))
                     },
                 )
 
@@ -284,10 +284,6 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                         model.startCrop(CropTarget.Editor)
                         model.cropUri = uri
                         nav.push(Route(Page.Crop))
-                    },
-                    onOpenCatalog = {
-                        model.openCatalog(CropTarget.Editor)
-                        nav.push(Route(Page.Catalog))
                     },
                 )
 

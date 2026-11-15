@@ -2,6 +2,11 @@ package com.dsh.miuix.cardface.ui
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.graphics.Color
+import top.yukonga.miuix.kmp.icon.extended.GridView
+import top.yukonga.miuix.kmp.icon.extended.ListView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +18,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -103,6 +109,7 @@ fun CatalogScreen(
     var downloadState by remember { mutableStateOf<String?>(null) }
     var downloadJob by remember { mutableStateOf<Job?>(null) }
     var localRevision by remember { mutableIntStateOf(0) }
+    var groupByIp by rememberSaveable { mutableStateOf(false) }
 
     val category = CatalogCategory.entries[categoryIndex]
     val gridState = rememberLazyGridState()
@@ -210,7 +217,7 @@ fun CatalogScreen(
 
             if (mode == 0) {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "category") {
-                    CatalogPillRow(
+                    CatalogTabRow(
                         items = CatalogCategory.entries.map { it.label },
                         selected = categoryIndex,
                         onSelected = { index ->
@@ -275,13 +282,33 @@ fun CatalogScreen(
                     }
                 }
                 item(span = { GridItemSpan(maxLineSpan) }, key = "status") {
-                    CatalogStatusLine(
-                        loading = loading,
-                        total = pageInfo?.total ?: 0,
-                        page = pageInfo?.page ?: page,
-                        pages = pageInfo?.pages ?: 1,
-                        cached = pageInfo?.cached == true,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) {
+                            CatalogStatusLine(
+                                loading = loading,
+                                total = pageInfo?.total ?: 0,
+                                page = pageInfo?.page ?: page,
+                                pages = pageInfo?.pages ?: 1,
+                                cached = pageInfo?.cached == true,
+                            )
+                        }
+                        IconButton(onClick = { groupByIp = false }) {
+                            Icon(
+                                imageVector = MiuixIcons.GridView,
+                                contentDescription = "按图片排列",
+                                tint = if (!groupByIp) MiuixTheme.colorScheme.primary
+                                else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                        IconButton(onClick = { groupByIp = true }) {
+                            Icon(
+                                imageVector = MiuixIcons.ListView,
+                                contentDescription = "按 IP / 分类分组",
+                                tint = if (groupByIp) MiuixTheme.colorScheme.primary
+                                else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                    }
                 }
             } else {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "status") {
@@ -332,18 +359,58 @@ fun CatalogScreen(
                 }
             }
 
-            items(items = browseItems, key = { it.key }) { item ->
-                CatalogTile(
-                    item = item,
-                    localImage = repo.localImage(item),
-                    favorite = repo.isFavorite(item),
-                    onClick = { selected = item },
-                    onFavorite = {
-                        runCatching { repo.toggleFavorite(item) }
-                            .onFailure { scope.launch { model.notify(it.message ?: "收藏失败") } }
-                        localRevision++
-                    },
-                )
+            if (groupByIp) {
+                val groups = browseItems
+                    .groupBy { it.subtitle.ifBlank { "其他" } }
+                    .toSortedMap(compareBy { if (it == "其他") "\uffff" else it })
+                groups.forEach { (group, list) ->
+                    item(span = { GridItemSpan(maxLineSpan) }, key = "group:$group") {
+                        Row(
+                            modifier = Modifier.padding(top = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = group,
+                                style = MiuixTheme.textStyles.headline2,
+                                fontWeight = FontWeight.Bold,
+                                color = MiuixTheme.colorScheme.onSurface,
+                            )
+                            Spacer(Modifier.size(8.dp))
+                            Text(
+                                text = "${list.size} 张",
+                                style = MiuixTheme.textStyles.footnote2,
+                                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            )
+                        }
+                    }
+                    items(items = list, key = { it.key }) { item ->
+                        CatalogTile(
+                            item = item,
+                            localImage = repo.localImage(item),
+                            favorite = repo.isFavorite(item),
+                            onClick = { selected = item },
+                            onFavorite = {
+                                runCatching { repo.toggleFavorite(item) }
+                                    .onFailure { scope.launch { model.notify(it.message ?: "收藏失败") } }
+                                localRevision++
+                            },
+                        )
+                    }
+                }
+            } else {
+                items(items = browseItems, key = { it.key }) { item ->
+                    CatalogTile(
+                        item = item,
+                        localImage = repo.localImage(item),
+                        favorite = repo.isFavorite(item),
+                        onClick = { selected = item },
+                        onFavorite = {
+                            runCatching { repo.toggleFavorite(item) }
+                                .onFailure { scope.launch { model.notify(it.message ?: "收藏失败") } }
+                            localRevision++
+                        },
+                    )
+                }
             }
 
             if (mode == 0 && pageInfo != null && page < (pageInfo?.pages ?: 1)) {
@@ -457,6 +524,48 @@ fun CatalogScreen(
                         modifier = Modifier.weight(1f),
                     )
                 }
+            }
+        }
+    }
+}
+
+/** 分类用扁平 tab（下划线），和上面的胶囊模式行区分开。 */
+@Composable
+private fun CatalogTabRow(
+    items: List<String>,
+    selected: Int,
+    onSelected: (Int) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(26.dp),
+    ) {
+        items.forEachIndexed { index, label ->
+            val active = index == selected
+            Column(
+                modifier = Modifier
+                    .clickable { onSelected(index) }
+                    .padding(vertical = 2.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = label,
+                    style = MiuixTheme.textStyles.footnote1,
+                    fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
+                    color = if (active) MiuixTheme.colorScheme.primary
+                    else MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.height(5.dp))
+                Box(
+                    modifier = Modifier
+                        .width(if (active) 26.dp else 3.dp)
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(if (active) MiuixTheme.colorScheme.primary else Color.Transparent),
+                )
             }
         }
     }
