@@ -59,6 +59,7 @@ import com.dsh.miuix.cardface.core.catalog.CatalogRepository
 import com.dsh.miuix.cardface.core.catalog.HibankCatalogSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -130,6 +131,19 @@ fun CatalogScreen(
         page = 1
         refresh++
         keyboard?.hide()
+    }
+
+    // 搜索框自动生效：停止输入约 450ms 就搜索，避免只有点图标/按键盘才生效。
+    LaunchedEffect(search, filter, mode) {
+        if (mode != 0) return@LaunchedEffect
+        val nextSearch = search.trim()
+        val nextFilter = filter.trim()
+        if (nextSearch == appliedSearch && nextFilter == appliedFilter) return@LaunchedEffect
+        delay(450)
+        appliedSearch = nextSearch
+        appliedFilter = nextFilter
+        page = 1
+        refresh++
     }
 
     val category = CatalogCategory.entries[categoryIndex]
