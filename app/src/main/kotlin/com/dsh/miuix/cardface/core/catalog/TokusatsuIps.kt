@@ -4,7 +4,7 @@ package com.dsh.miuix.cardface.core.catalog
 object TokusatsuIps {
 
     private val exact = setOf("奥特曼", "假面骑士", "铁甲小宝", "超级战队", "牙狼", "哥斯拉")
-    private val keywords = listOf("奥特曼", "奥特", "假面骑士", "铁甲小宝", "超级战队", "战队", "牙狼", "哥斯拉", "特摄")
+    private val keywords = listOf("奥特曼", "奥特", "假面骑士", "铁甲小宝", "超级战队", "牙狼", "哥斯拉", "特摄")
 
     fun isTokusatsu(name: String): Boolean {
         val text = name.trim()
