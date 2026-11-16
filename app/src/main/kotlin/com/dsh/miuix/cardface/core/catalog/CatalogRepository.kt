@@ -312,7 +312,8 @@ class CatalogRepository(context: Context) {
         filter: String,
         pageSize: Int = 24,
     ): CatalogPage {
-        var list = all
+        // 同一张图可能在来源里重复登记（同 URL），只保留一条。
+        var list = all.distinctBy { it.imageUrl }
         if (search.isNotBlank()) {
             val q = search.trim()
             list = list.filter {

@@ -411,6 +411,12 @@ fun CatalogScreen(
                                 cached = pageInfo?.cached == true,
                             )
                         }
+                        if (mode == 0 && groups.size > 8) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                TextButton(text = "A-Z", onClick = { showIndex = true })
+                                TextButton(text = "IP 跳转", onClick = { showIpJump = true })
+                            }
+                        }
                     }
                 }
             } else {
