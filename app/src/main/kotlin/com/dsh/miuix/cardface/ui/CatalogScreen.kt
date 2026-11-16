@@ -411,8 +411,10 @@ fun CatalogScreen(
                             )
                         }
                         if (mode == 0 && groups.size > 8) {
-                            TextButton(text = "A-Z", onClick = { showIndex = true })
-                            TextButton(text = "IP 跳转", onClick = { showIpJump = true })
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                TextButton(text = "A-Z", onClick = { showIndex = true })
+                                TextButton(text = "IP 跳转", onClick = { showIpJump = true })
+                            }
                         }
                     }
                 }
@@ -617,6 +619,9 @@ fun CatalogScreen(
                         Card(
                             cornerRadius = 14.dp,
                             insideMargin = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                            colors = top.yukonga.miuix.kmp.basic.CardDefaults.defaultColors(
+                                color = MiuixTheme.colorScheme.secondaryContainer,
+                            ),
                             onClick = {
                                 if (target != null) {
                                     showIpJump = false
