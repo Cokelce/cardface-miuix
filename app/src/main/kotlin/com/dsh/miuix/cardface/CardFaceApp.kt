@@ -164,7 +164,7 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
             }
         },
         bottomBar = {
-            if (currentPage.isTab) {
+            if (currentPage.isTab && !model.galleryPreviewVisible) {
                 FloatingNavigationBar() {
                     FloatingTabItem(
                         selected = currentPage == Page.Home,

@@ -32,6 +32,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -83,7 +85,12 @@ fun GalleryScreen(
     val animationsEnabled = LocalAnimationsEnabled.current
     LaunchedEffect(preview) {
         if (preview != null) lastPreview = preview
+        model.galleryPreviewVisible = preview != null
     }
+    DisposableEffect(Unit) {
+        onDispose { model.galleryPreviewVisible = false }
+    }
+    BackHandler(enabled = preview != null) { preview = null }
 
     val revision = model.prefs.revision + model.storeRevision
     val images = remember(revision, tick) {
@@ -274,7 +281,7 @@ private fun GalleryPreview(image: GalleryImage, onClose: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF000000))
+            .background(MiuixTheme.colorScheme.background)
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
@@ -295,14 +302,14 @@ private fun GalleryPreview(image: GalleryImage, onClose: () -> Unit) {
                 Icon(
                     imageVector = MiuixIcons.Close,
                     contentDescription = "关闭",
-                    tint = Color.White,
+                    tint = MiuixTheme.colorScheme.onBackground,
                 )
             }
         }
         Text(
             text = image.name,
             style = MiuixTheme.textStyles.footnote1,
-            color = Color.White.copy(alpha = 0.8f),
+            color = MiuixTheme.colorScheme.onBackground.copy(alpha = 0.8f),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 28.dp),
