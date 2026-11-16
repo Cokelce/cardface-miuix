@@ -937,6 +937,42 @@ fun VersionScreen(
     }
 }
 
+private data class ChangelogGroup(val title: String, val lines: List<String>)
+
+/**
+ * 更新公告约定：「新增功能」在前，「修改问题」在后。
+ * 兼容旧版本没有分组的正文（当成「更新内容」逐条展示）。
+ */
+private fun parseChangelog(body: String): List<ChangelogGroup> {
+    val groups = LinkedHashMap<String, MutableList<String>>()
+    var current: String? = null
+    body.lineSequence().forEach { raw ->
+        val line = raw.trim()
+        if (line.startsWith("##")) {
+            val title = line.removePrefix("##").trim()
+            current = when {
+                title.contains("新增") || title.contains("功能") -> "新增功能"
+                title.contains("修复") || title.contains("修改") ||
+                    title.contains("Bug") || title.contains("bug") ||
+                    title.contains("问题") -> "修改问题"
+                title.contains("更新") -> "更新内容"
+                else -> title.ifBlank { "更新内容" }
+            }
+            groups.getOrPut(current!!) { mutableListOf() }
+            return@forEach
+        }
+        if (line.isEmpty() || line.startsWith("#")) return@forEach
+        val item = line.removePrefix("- ").removePrefix("* ").trim()
+        if (item.isEmpty()) return@forEach
+        groups.getOrPut(current ?: "更新内容") { mutableListOf() }.add(item)
+    }
+    val order = listOf("新增功能", "修改问题", "更新内容")
+    return groups.entries
+        .sortedBy { entry -> order.indexOf(entry.key).let { if (it < 0) order.size else it } }
+        .map { ChangelogGroup(it.key, it.value) }
+        .filter { it.lines.isNotEmpty() }
+}
+
 /** 更新日志：参考 DuJi 的版本列表样式（日期 + 版本 + 条目）。 */
 @Composable
 fun ChangelogScreen(
@@ -1022,12 +1058,7 @@ fun ChangelogScreen(
 
         items(releases.size, key = { "release-${releases[it].versionName}-${releases[it].date}" }) { index ->
             val release = releases[index]
-            val lines = release.body.lineSequence()
-                .map { it.trim() }
-                .filter { it.isNotEmpty() && !it.startsWith("##") && !it.startsWith("#") }
-                .map { it.removePrefix("- ").removePrefix("* ").trim() }
-                .filter { it.isNotEmpty() }
-                .toList()
+            val groups = parseChangelog(release.body)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1047,7 +1078,7 @@ fun ChangelogScreen(
                     fontWeight = FontWeight.Bold,
                     color = MiuixTheme.colorScheme.onSurface,
                 )
-                if (lines.isEmpty()) {
+                if (groups.isEmpty()) {
                     Spacer(Modifier.height(6.dp))
                     Text(
                         text = "暂无更新说明",
@@ -1055,14 +1086,23 @@ fun ChangelogScreen(
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 } else {
-                    Spacer(Modifier.height(8.dp))
-                    lines.forEach { line ->
+                    groups.forEach { group ->
+                        Spacer(Modifier.height(10.dp))
                         Text(
-                            text = line,
-                            style = MiuixTheme.textStyles.body2,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            modifier = Modifier.padding(bottom = 4.dp),
+                            text = group.title,
+                            style = MiuixTheme.textStyles.footnote1,
+                            fontWeight = FontWeight.Bold,
+                            color = MiuixTheme.colorScheme.primary,
                         )
+                        Spacer(Modifier.height(4.dp))
+                        group.lines.forEach { line ->
+                            Text(
+                                text = line,
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(bottom = 4.dp),
+                            )
+                        }
                     }
                 }
             }
