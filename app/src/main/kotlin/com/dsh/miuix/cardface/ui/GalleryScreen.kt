@@ -45,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
@@ -278,10 +279,16 @@ private fun GalleryTile(
 /** 全屏预览（深色背景 + 关闭）。 */
 @Composable
 private fun GalleryPreview(image: GalleryImage, onClose: () -> Unit) {
+    // 深色用纯黑（看图更沉浸），浅色跟随主题背景。
+    val previewBackground = if (MiuixTheme.colorScheme.background.luminance() < 0.5f) {
+        Color.Black
+    } else {
+        MiuixTheme.colorScheme.background
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(MiuixTheme.colorScheme.background)
+            .background(previewBackground)
             .statusBarsPadding()
             .navigationBarsPadding(),
     ) {
