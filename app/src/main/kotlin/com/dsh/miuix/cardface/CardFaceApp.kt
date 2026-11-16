@@ -141,6 +141,7 @@ fun CardFaceApp() {
         resolver.registerContentObserver(android.net.Uri.parse("$root/runtime_health"), true, observer)
         resolver.registerContentObserver(android.net.Uri.parse("$root/card_sources"), true, observer)
         resolver.registerContentObserver(android.net.Uri.parse("$root/replacement_assets"), true, observer)
+        resolver.registerContentObserver(android.net.Uri.parse("$root/owned_cards"), true, observer)
         onDispose { resolver.unregisterContentObserver(observer); model.dispose() }
     }
 

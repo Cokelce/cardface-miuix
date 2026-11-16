@@ -1,5 +1,6 @@
 package com.dsh.miuix.cardface.xposed
 
+import android.app.Activity
 import android.app.Application
 import android.app.Instrumentation
 import android.content.Context
@@ -72,6 +73,7 @@ class HookEngine(
 
         // 1. 先拿 Context：provider 读写（last_hook_at / card_urls / 设置）需要。
         installContextHook()
+        if (osType == MethodLocator.OS_ONEPLUS) installWalletResumeHook()
 
         // 2. 自动 hook 点永远装（自愈；自定义 hook 点是额外的兜底，不冲突——两者都走 replaceUrl）。
         val settings = settingsRepo.snapshot()
@@ -119,6 +121,14 @@ class HookEngine(
 
     // ---------- Context 捕获 ----------
 
+    private val resumeRefreshAt = java.util.concurrent.atomic.AtomicLong(0L)
+
+    private fun installWalletResumeHook() {
+        tryHook("Instrumentation.callActivityOnResume") {
+            Instrumentation::class.java.getDeclaredMethod("callActivityOnResume", Activity::class.java)
+        }
+    }
+
     private fun installContextHook() {
         tryHook("Application.attach") {
             Application::class.java.getDeclaredMethod("attach", Context::class.java)
@@ -126,6 +136,9 @@ class HookEngine(
         tryHook("Instrumentation.callApplicationOnCreate") {
             Instrumentation::class.java.getDeclaredMethod("callApplicationOnCreate", Application::class.java)
         }?.let { return }
+        tryHook("Instrumentation.callActivityOnResume") {
+            Instrumentation::class.java.getDeclaredMethod("callActivityOnResume", Activity::class.java)
+        }
         tryHook("ContextWrapper.attachBaseContext") {
             ContextWrapper::class.java.getDeclaredMethod("attachBaseContext", Context::class.java)
         }
@@ -142,6 +155,7 @@ class HookEngine(
                     override fun intercept(chain: XposedInterface.Chain): Any? {
                         val result = chain.proceed()
                         try {
+                            if (label == "Instrumentation.callActivityOnResume") refreshOwnedSnapshot()
                             if (label.startsWith("ContextWrapper")) {
                                 val target = chain.thisObject
                                 if (target is Application) {
@@ -252,10 +266,74 @@ class HookEngine(
         }
     }
 
+    private val ownedSnapshotAt = java.util.concurrent.atomic.AtomicLong(0L)
+    private val emptyOwnedSnapshotStreak = java.util.concurrent.atomic.AtomicInteger(0)
+
+    private fun refreshOwnedSnapshot() {
+        val now = System.currentTimeMillis()
+        if (now - resumeRefreshAt.get() < 1500L || !resumeRefreshAt.compareAndSet(resumeRefreshAt.get(), now)) return
+        runCatching {
+            val manager = classLoader.loadClass("i00.c")
+            val list = runCatching { manager.getMethod("p").invoke(null) }
+                .getOrElse { manager.getDeclaredMethod("p").apply { isAccessible = true }.invoke(null) }
+            val result = list.javaClass.getMethod("x").apply { isAccessible = true }.invoke(list)
+            publishOwnedSnapshot(result)
+        }.onFailure { XLog.w("wallet resume snapshot refresh failed", it) }
+    }
+
+    /** Snapshot the wallet's account-owned list; this is the sole home-membership source. */
+    private fun installOnePlusOwnedSnapshotHook() {
+        try {
+            val cardClass = classLoader.loadClass("com.nearme.wallet.db.NfcCard")
+            val manager = classLoader.loadClass("i00.c")
+            val method = manager.getDeclaredMethod("x")
+            module.hook(method).intercept(object : XposedInterface.Hooker {
+                override fun intercept(chain: XposedInterface.Chain): Any? {
+                    val result = chain.proceed()
+                    publishOwnedSnapshot(result)
+                    return result
+                }
+            })
+            installedCount++
+            XLog.i("OnePlus owned-card snapshot hook installed: ${manager.name}#x")
+        } catch (t: Throwable) {
+            missingTargets.add("i00.c#x")
+            XLog.w("owned-card snapshot hook unavailable", t)
+        }
+    }
+
+    private fun publishOwnedSnapshot(result: Any?) {
+        val source = result as? Iterable<*> ?: return
+        val now = System.currentTimeMillis()
+        if (!contextReady) return
+        val previousAttempt = ownedSnapshotAt.get()
+        if (now - previousAttempt < 800L || !ownedSnapshotAt.compareAndSet(previousAttempt, now)) return
+        val cards = source.mapNotNull { item ->
+            try {
+                val type = item?.javaClass?.getMethod("getCardType")?.invoke(item)?.toString()
+                val status = item?.javaClass?.getMethod("getCardStatus")?.invoke(item)?.toString()
+                val aid = item?.javaClass?.getMethod("getAid")?.invoke(item)?.toString()
+                val unique = item?.javaClass?.getMethod("getUniqueCardId")?.invoke(item)?.toString()
+                val image = item?.javaClass?.getMethod("getCardImg")?.invoke(item)?.toString()
+                    ?.takeIf { it.isNotBlank() }
+                val name = com.dsh.miuix.cardface.core.CardNameResolver.fromCard(item)
+                val candidate = com.dsh.miuix.cardface.core.OwnedCardPolicy.Candidate(type, status, aid, unique, image, name)
+                if (com.dsh.miuix.cardface.core.OwnedCardPolicy.accept(candidate)) image!!.trim() to name else null
+            } catch (_: Throwable) { null }
+        }
+        // i00.c#x() returns an empty list on database/account read errors. Keep the
+        // last good membership snapshot until two consecutive empty reads confirm it.
+        if (cards.isEmpty() && emptyOwnedSnapshotStreak.incrementAndGet() < 2) return
+        if (cards.isNotEmpty()) emptyOwnedSnapshotStreak.set(0)
+        val json = com.dsh.miuix.cardface.core.OwnedCardPolicy.snapshotJson(now, cards)
+        settingsRepo.queueRuntime("owned_cards", "snapshot", json)
+    }
+
     /** OnePlus/ColorOS 5.52.0: capture original card URLs and reuse the full editor/map pipeline. */
     private fun installOnePlusHooks() {
         installStableCardLoads()
         installKnownGlideLoaders()
+        installOnePlusOwnedSnapshotHook()
         val targets = listOf(
             "com.nearme.wallet.db.NfcCard" to "getCardImg",
             "com.nearme.wallet.db.NfcCardDetail" to "getCardImg",
@@ -414,11 +492,11 @@ class HookEngine(
     }
 
     private fun observeOriginal(url: String, card: Any?) {
+        // Membership comes only from i00.c#x snapshot. Metadata observation is retained for
+        // mapping compatibility, but it never inserts a URL into card_urls or home membership.
         settingsRepo.snapshot()
         if (settingsRepo.isReplacementMaterial(url)) return
-        settingsRepo.addCardUrl(url)
         settingsRepo.reportSource(card, walletPackage, url)
-        com.dsh.miuix.cardface.core.CardNameResolver.fromCard(card)?.let { settingsRepo.reportCardName(url, it) }
         settingsRepo.touchLastHookAt()
     }
 

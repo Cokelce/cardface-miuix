@@ -219,15 +219,25 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
         if (kept.size != before.size) check(urls.edit().putStringSet(KEY_ALL_CARD_URLS, kept).commit()) { "清理替换条目失败" }
     }
 
+    private fun ownedSnapshot(): String? =
+        appContext.getSharedPreferences("owned_cards", Context.MODE_PRIVATE).getString("snapshot", null)
+
+    fun ownedCardUrls(): Set<String> = OwnedCardPolicy.snapshotUrls(ownedSnapshot())
+
+    private fun ownedDisplayName(url: String): String? =
+        OwnedCardPolicy.snapshotNames(ownedSnapshot())[url]
+
     fun cardFaces(): List<CardFaceItem> {
         val black = blacklistedUrls()
         val mappings = mappingPairs()
-        return CardIdentity.group(allCardUrls()
+        // OnePlus home is driven exclusively by the latest wallet-owned snapshot.
+        val urls = if (WalletApps.primary(appContext) == WalletKind.ONEPLUS) ownedCardUrls() else allCardUrls()
+        return CardIdentity.group(urls
             .filterNot { black.contains(it) }
             .filterNot { isReplacementMaterial(it, mappings) }
             // 图标 / 横幅 / 广告 / 二维码等明显不是卡面的图，不展示。
             .filterNot { isJunkImageUrl(it) }
-            .map { CardFaceItem(url = it, replacement = replacementFor(it), customName = customName(it), detectedName = detectedName(it), runtimeState = applicationState(it)) })
+            .map { CardFaceItem(url = it, replacement = replacementFor(it), customName = customName(it), detectedName = if (WalletApps.primary(appContext) == WalletKind.ONEPLUS) ownedDisplayName(it) else detectedName(it), runtimeState = applicationState(it)) })
     }
 
     /** 卡包里大量非卡面图片（图标、横幅、广告）会被 hook 抓到，这里统一过滤。 */
