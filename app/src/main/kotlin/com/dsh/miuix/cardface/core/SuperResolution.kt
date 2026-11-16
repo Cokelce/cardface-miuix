@@ -32,7 +32,7 @@ object SuperResolution {
 
     /** 源裁剪尺寸低于目标卡面尺寸时，先 2x 超分；失败返回 null（调用方直接降采样兜底）。 */
     fun upscaleIfNeeded(context: Context, src: Bitmap, targetW: Int, targetH: Int): Bitmap? {
-        // JNI 版本尚未通过稳定性验证，先关闭，避免保存时原生崩溃。
+        // JNI 推理仍会原生崩溃，保持关闭。
         if (true) return null
         if (src.width >= targetW && src.height >= targetH) return null
         if (src.width <= 0 || src.height <= 0) return null
