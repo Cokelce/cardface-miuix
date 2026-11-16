@@ -222,31 +222,33 @@ fun GalleryScreen(
             summary = acting.name,
             onDismissRequest = { actionTarget = null },
         ) {
-            TextButton(
-                text = "重命名",
-                onClick = {
-                    renameTarget = acting
-                    actionTarget = null
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-            TextButton(
-                text = "删除",
-                onClick = {
-                    deleteTarget = acting
-                    actionTarget = null
-                },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.textButtonColors(
-                    color = MiuixTheme.colorScheme.error,
-                    textColor = MiuixTheme.colorScheme.onError,
-                ),
-            )
-            TextButton(
-                text = "取消",
-                onClick = { actionTarget = null },
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(
+                    text = "重命名",
+                    onClick = {
+                        renameTarget = acting
+                        actionTarget = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                TextButton(
+                    text = "删除",
+                    onClick = {
+                        deleteTarget = acting
+                        actionTarget = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.textButtonColors(
+                        color = MiuixTheme.colorScheme.error,
+                        textColor = MiuixTheme.colorScheme.onError,
+                    ),
+                )
+                TextButton(
+                    text = "取消",
+                    onClick = { actionTarget = null },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
         }
     }
 
