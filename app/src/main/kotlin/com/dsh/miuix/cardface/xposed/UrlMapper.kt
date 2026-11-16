@@ -75,18 +75,34 @@ object UrlMapper {
             url.contains(SMALL_ICON_MIBI)
 
     private val SIZE_SEGMENT = Regex("/w\\d+h\\d+(?=[/?#]|$)")
-    private val HASH_SEGMENT = Regex("(^|/)[0-9a-fA-F]{12,}(?=/|$)")
+    // 只去掉「中间目录」里的哈希/UUID；最后一段文件名即使全是十六进制也是图片身份，不能删。
+    private val HASH_SEGMENT = Regex("(^|/)[0-9a-fA-F]{12,}(?=/)")
     private val UUID_SEGMENT = Regex(
-        "(^|/)[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?=/|$)",
+        "(^|/)[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}(?=/)",
+    )
+    private val RESIZE_QUERY_KEYS = setOf(
+        "w", "h", "width", "height", "size", "q", "quality", "format", "fmt",
+        "thumbnail", "thumb", "resize", "scale", "x-oss-process", "imageview2",
+        // 缓存戳/签名：同一张图的 URL 会带不同值，不承载图片身份。
+        "ts", "t", "v", "_", "sign", "signature", "expires", "expire",
     )
 
     /** 去掉查询参数、缩略图尺寸段、哈希/UUID 段后的 URL，用来容忍卡包刷新后 URL 细节变化。 */
     fun normalizedUrl(url: String): String {
-        var u = url.substringBefore('#').substringBefore('?')
-        u = SIZE_SEGMENT.replace(u, "")
-        u = UUID_SEGMENT.replace(u, "")
-        u = HASH_SEGMENT.replace(u, "")
-        return u.trimEnd('/')
+        val withoutFragment = url.substringBefore('#')
+        val path = withoutFragment.substringBefore('?')
+        val query = withoutFragment.substringAfter('?', "")
+        var normalizedPath = SIZE_SEGMENT.replace(path, "")
+        normalizedPath = UUID_SEGMENT.replace(normalizedPath, "")
+        normalizedPath = HASH_SEGMENT.replace(normalizedPath, "")
+        normalizedPath = normalizedPath.trimEnd('/')
+        // 只丢「缩放/格式」这类不承载身份的参数；id/cardId 等必须保留，
+        // 否则交通卡列表里所有图标会归一化成同一个 URL，被同一张替换图错误命中。
+        val kept = query.split('&')
+            .filter { it.isNotBlank() }
+            .filterNot { RESIZE_QUERY_KEYS.contains(it.substringBefore('=').lowercase()) }
+            .sorted()
+        return if (kept.isEmpty()) normalizedPath else normalizedPath + "?" + kept.joinToString("&")
     }
 
     /**

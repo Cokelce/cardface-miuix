@@ -2,6 +2,7 @@ package com.dsh.miuix.cardface.xposed
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -70,6 +71,24 @@ class UrlMapperTest {
         val url = "https://cdn.example.com/mfc/thumbnail/webp/a1b2c3d4e5f6a7b8/xx.png"
         val env = env(mappings = mapOf("https://cdn.example.com/mfc/thumbnail/webp/xx.png" to "mine.png"))
         assertEquals(UrlMapper.LOCAL_IMAGE_URI_PREFIX + "mine.png", UrlMapper.map(url, env).url)
+    }
+
+    @Test
+    fun `hash filename is identity and must not collapse`() {
+        val a = "https://cdn.example.com/mfc/w1080h1920/NextPay/00b90641f78934f6ba77eacced5a1dfab08693131"
+        val b = "https://cdn.example.com/mfc/w1080h1920/NextPay/02e6241635fd986652370f3da689ec9f59c434c08"
+        assertNotEquals(UrlMapper.normalizedUrl(a), UrlMapper.normalizedUrl(b))
+        val env = env(mappings = mapOf(a to "mine.png"))
+        assertEquals("", UrlMapper.map(b, env).url)
+    }
+
+    @Test
+    fun `query identity params are kept`() {
+        val a = "https://cdn.example.com/icon?cardId=1"
+        val b = "https://cdn.example.com/icon?cardId=2"
+        val env = env(mappings = mapOf(a to "mine.png"))
+        assertEquals(UrlMapper.LOCAL_IMAGE_URI_PREFIX + "mine.png", UrlMapper.map(a, env).url)
+        assertEquals("", UrlMapper.map(b, env).url)
     }
 
     @Test

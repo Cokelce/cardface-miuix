@@ -51,6 +51,7 @@ import top.yukonga.miuix.kmp.icon.extended.Background
 import top.yukonga.miuix.kmp.icon.extended.BankCards
 import top.yukonga.miuix.kmp.icon.extended.Blocklist
 import top.yukonga.miuix.kmp.icon.extended.Community
+import top.yukonga.miuix.kmp.icon.extended.Clear
 import top.yukonga.miuix.kmp.icon.extended.CloudFill
 import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.icon.extended.Delete
@@ -403,6 +404,30 @@ fun SettingsScreen(
                                 }
                             },
                         )
+                    },
+                )
+                RowDivider()
+                ArrowPreference(
+                    title = "清理未替换的卡面",
+                    startAction = { SettingRowIcon(MiuixIcons.Clear) },
+                    summary = "清掉打开添加卡片页时带出来的原图，已替换的卡面保留",
+                    onClick = {
+                        val unreplaced = prefs.allCardUrls().filter { prefs.replacementFor(it) == null }
+                        if (unreplaced.isEmpty()) {
+                            toast("没有未替换的卡面")
+                        } else {
+                            confirm = ConfirmSpec(
+                                title = "清理 ${unreplaced.size} 张未替换卡面？",
+                                message = "只会从卡面列表移除没有替换图的卡片，不影响已经替换的卡面和图库。",
+                                confirmText = "清理",
+                                onConfirm = {
+                                    prefs.removeCardUrls(unreplaced)
+                                    com.dsh.miuix.cardface.core.CardSync.writeMapSnapshot(context, prefs)
+                                    model.bumpStore()
+                                    toast("已清理 ${unreplaced.size} 张未替换卡面")
+                                },
+                            )
+                        }
                     },
                 )
                 RowDivider()
