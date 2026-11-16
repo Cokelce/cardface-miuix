@@ -35,6 +35,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -115,6 +117,41 @@ fun SettingsScreen(
 
     fun toast(message: String) {
         scope.launch { model.notify(message) }
+    }
+
+    val exportBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val zip = com.dsh.miuix.cardface.core.AppBackup.export(context, prefs)
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        zip.inputStream().use { it.copyTo(out) }
+                    } ?: error("无法写入文件")
+                    zip.delete()
+                }.isSuccess
+            }
+            toast(if (ok) "备份已导出" else "备份导出失败")
+        }
+    }
+    val importBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        confirm = ConfirmSpec(
+            title = "恢复这份备份？",
+            message = "会覆盖当前设置、映射和图库替换图，恢复后建议重启卡包。",
+            confirmText = "恢复",
+            onConfirm = {
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        runCatching { com.dsh.miuix.cardface.core.AppBackup.restore(context, uri) }
+                    }
+                    result.onSuccess {
+                        model.bumpStore()
+                        toast("已恢复：${it.mappings} 条映射，${it.images} 张图")
+                    }.onFailure { toast("恢复失败：${it.message ?: "文件不可用"}") }
+                }
+            },
+        )
     }
 
     LazyColumn(
@@ -333,6 +370,50 @@ fun SettingsScreen(
         // ---------- 缓存与修复 ----------
         item(key = "cache") {
             SettingsGroup("数据与维护") {
+                ArrowPreference(
+                    title = "备份数据",
+                    startAction = { SettingRowIcon(MiuixIcons.Notes) },
+                    summary = "导出设置、映射和图库替换图（zip）",
+                    onClick = { exportBackup.launch("卡面工坊备份-${System.currentTimeMillis() / 1000}.zip") },
+                )
+                RowDivider()
+                ArrowPreference(
+                    title = "恢复数据",
+                    startAction = { SettingRowIcon(MiuixIcons.Refresh) },
+                    summary = "从备份 zip 恢复设置、映射和替换图",
+                    onClick = { importBackup.launch(arrayOf("application/zip", "application/octet-stream")) },
+                )
+                RowDivider()
+                ArrowPreference(
+                    title = "一键重启卡包",
+                    startAction = { SettingRowIcon(MiuixIcons.Refresh) },
+                    summary = "强制停止并重新打开卡包，让替换立即生效",
+                    onClick = {
+                        scope.launch {
+                            val ok = withContext(Dispatchers.IO) { DeviceBridge.restartWallet(context, walletKind) }
+                            toast(if (ok) "已重启卡包" else "重启失败：请检查 root 或卡包是否安装")
+                        }
+                    },
+                )
+                RowDivider()
+                ArrowPreference(
+                    title = "导出诊断信息",
+                    startAction = { SettingRowIcon(MiuixIcons.Info) },
+                    summary = "生成版本、设备、映射数量等信息并分享",
+                    onClick = {
+                        scope.launch {
+                            val file = withContext(Dispatchers.IO) {
+                                runCatching { writeDiagnostics(context, prefs, status, versionName) }.getOrNull()
+                            }
+                            if (file != null) {
+                                com.dsh.miuix.cardface.core.CardShare.shareTextFile(context, file, "分享诊断信息")
+                            } else {
+                                toast("诊断信息生成失败")
+                            }
+                        }
+                    },
+                )
+                RowDivider()
                 ArrowPreference(
                     title = "清除 hook 点缓存",
                     startAction = { SettingRowIcon(MiuixIcons.Refresh) },
@@ -676,4 +757,30 @@ private fun SettingRowIcon(image: androidx.compose.ui.graphics.vector.ImageVecto
         tint = MiuixTheme.colorScheme.onBackground,
         modifier = Modifier.size(22.dp),
     )
+}
+
+private fun writeDiagnostics(
+    context: android.content.Context,
+    prefs: AppPrefs,
+    status: com.dsh.miuix.cardface.core.ModuleStatus?,
+    versionName: String,
+): java.io.File {
+    val info = buildString {
+        appendLine("卡面工坊诊断信息")
+        appendLine("时间：${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}")
+        appendLine("版本：$versionName（code ${runCatching { context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode }.getOrDefault(0L)}）")
+        appendLine("设备：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} / Android ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})")
+        appendLine("卡包：${status?.walletKind?.label ?: "未检测到"}")
+        appendLine("hook：${if ((status?.lastHookAt ?: 0L) > 0) "已上报" else "未生效"}")
+        appendLine("映射数量：${prefs.mappedImageNames().size}")
+        appendLine("卡面数量：${runCatching { prefs.allCardUrls().size }.getOrDefault(0)}")
+        appendLine("图库图片：${runCatching { prefs.cardFaces().size }.getOrDefault(0)}")
+        appendLine("黑名单：${prefs.blacklistedCardFaces().size}")
+        appendLine("同步方式：${prefs.syncMode.label}")
+        appendLine("省流量：${prefs.dataSaver}")
+        appendLine("深色模式：${prefs.darkMode}")
+    }
+    val file = java.io.File(context.cacheDir, "cardface-diagnostics.txt")
+    file.writeText(info)
+    return file
 }

@@ -25,6 +25,7 @@ object Updates {
         val tag: String,
         val body: String,
         val htmlUrl: String,
+        val downloadUrl: String = "",
     )
 
     data class ReleaseEntry(
@@ -32,6 +33,7 @@ object Updates {
         val versionName: String,
         val body: String,
         val htmlUrl: String,
+        val downloadUrl: String = "",
     )
 
     private const val API =
@@ -52,11 +54,24 @@ object Updates {
             val json = JSONObject(text)
             val tag = json.optString("tag_name")
             val version = tag.substringAfterLast('-').ifBlank { tag }.removePrefix("v")
+            val assets = json.optJSONArray("assets")
+            var apkUrl = ""
+            if (assets != null) {
+                for (i in 0 until assets.length()) {
+                    val a = assets.optJSONObject(i) ?: continue
+                    val name = a.optString("name")
+                    if (name.endsWith(".apk", ignoreCase = true)) {
+                        apkUrl = a.optString("browser_download_url")
+                        break
+                    }
+                }
+            }
             Release(
                 versionName = version,
                 tag = tag,
                 body = json.optString("body").trim(),
                 htmlUrl = json.optString("html_url"),
+                downloadUrl = apkUrl,
             )
         } finally {
             conn.disconnect()

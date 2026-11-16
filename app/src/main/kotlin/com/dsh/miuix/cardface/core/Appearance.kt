@@ -76,6 +76,10 @@ object ThemeColors {
         Preset("暖橙", Color(0xFFF59E0B)),
         Preset("绯红", Color(0xFFE5484D)),
         Preset("流金", Color(0xFFB88A2E)),
+        Preset("薄荷", Color(0xFF2BB673)),
+        Preset("天青", Color(0xFF2E86C1)),
+        Preset("咖啡", Color(0xFF8D6E63)),
+        Preset("石墨", Color(0xFF546E7A)),
     )
 }
 

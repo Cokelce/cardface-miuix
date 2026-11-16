@@ -183,6 +183,35 @@ class AppPrefs(context: Context) {
         touch()
     }
 
+    /** 备份恢复：整体写入设置（保留设备相关键）。 */
+    fun restoreSettings(values: Map<String, Any?>) {
+        val e = rawSettings.edit().clear()
+        values.forEach { (k, v) ->
+            when (v) {
+                is Boolean -> e.putBoolean(k, v)
+                is String -> e.putString(k, v)
+                is Int -> e.putInt(k, v)
+                is Long -> e.putLong(k, v)
+            }
+        }
+        e.apply()
+        touch()
+    }
+
+    fun restoreUrls(urls: Set<String>) {
+        rawUrls.edit().putStringSet("all_card_url_set", urls).apply()
+        touch()
+    }
+
+    fun restoreNames(names: Map<String, String>) {
+        val e = names().edit().clear()
+        names.forEach { (k, v) -> e.putString(k, v) }
+        e.apply()
+        touch()
+    }
+
+    private fun names() = appContext.getSharedPreferences("card_names", Context.MODE_PRIVATE)
+
     fun blacklistedUrls(): Set<String> =
         urls.getStringSet(KEY_BLACK_CARD_URLS, emptySet()).orEmpty().toSet()
 

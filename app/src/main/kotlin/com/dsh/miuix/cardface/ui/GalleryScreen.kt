@@ -208,7 +208,7 @@ fun GalleryScreen(
             label = "galleryPreview",
         ) {
             lastPreview?.let { image ->
-                GalleryPreview(image = image, onClose = { preview = null })
+                GalleryPreview(image = image, onClose = { preview = null }, onShare = { com.dsh.miuix.cardface.core.CardShare.shareImage(context, image.file) })
             }
         }
     }
@@ -379,7 +379,7 @@ private fun GalleryTile(
 
 /** 全屏预览（深色背景 + 关闭）。 */
 @Composable
-private fun GalleryPreview(image: GalleryImage, onClose: () -> Unit) {
+private fun GalleryPreview(image: GalleryImage, onClose: () -> Unit, onShare: () -> Unit) {
     // 深色用纯黑（看图更沉浸），浅色跟随主题背景。
     val previewBackground = if (MiuixTheme.colorScheme.background.luminance() < 0.5f) {
         Color.Black
@@ -406,6 +406,7 @@ private fun GalleryPreview(image: GalleryImage, onClose: () -> Unit) {
                 .align(Alignment.TopEnd)
                 .padding(12.dp),
         ) {
+            TextButton(text = "分享", onClick = onShare)
             IconButton(onClick = onClose) {
                 Icon(
                     imageVector = MiuixIcons.Close,

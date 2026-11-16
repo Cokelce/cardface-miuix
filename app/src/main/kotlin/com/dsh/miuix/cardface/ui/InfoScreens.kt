@@ -40,6 +40,7 @@ import com.dsh.miuix.cardface.core.CardFaceItem
 import com.dsh.miuix.cardface.core.WalletApps
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
@@ -796,6 +797,8 @@ fun VersionScreen(
     var checking by remember { mutableStateOf(false) }
     var info by remember { mutableStateOf<Pair<String, String>?>(null) }
     var autoCheckUpdate by remember { mutableStateOf(prefs.autoCheckUpdate) }
+    var pendingUpdate by remember { mutableStateOf<Updates.Release?>(null) }
+    var updateProgress by remember { mutableStateOf(-1) }
 
     fun openUrl(url: String) {
         runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
@@ -811,10 +814,7 @@ fun VersionScreen(
             if (latest == null) {
                 info = "检查更新" to "检查失败，请检查网络后重试。"
             } else if (latest.versionName.isNotBlank() && Updates.isNewer(latest.versionName, version)) {
-                info = "发现新版本 v${latest.versionName}" to
-                    "当前版本：v$version\n最新版本：v${latest.versionName}\n\n" +
-                    (latest.body.ifBlank { "暂无更新说明" }) +
-                    "\n\n项目地址：${latest.htmlUrl}"
+                pendingUpdate = latest
             } else {
                 info = "已是最新版本" to "当前 v$version 已经是最新版本。"
             }
@@ -945,6 +945,58 @@ fun VersionScreen(
                     .fillMaxWidth()
                     .padding(vertical = 16.dp),
             )
+        }
+    }
+
+    val update = pendingUpdate
+    if (update != null) {
+        OverlayDialog(
+            show = true,
+            title = "发现新版本 v${update.versionName}",
+            summary = "当前 v$version",
+            onDismissRequest = { pendingUpdate = null; updateProgress = -1 },
+        ) {
+            Text(
+                text = if (updateProgress >= 0) "正在下载… $updateProgress%" else update.body.ifBlank { "暂无更新说明" },
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(
+                    text = "取消",
+                    onClick = { pendingUpdate = null; updateProgress = -1 },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = if (update.downloadUrl.isBlank()) "打不开下载地址" else if (updateProgress >= 0) "下载中…" else "下载并安装",
+                    onClick = {
+                        if (update.downloadUrl.isBlank()) return@TextButton
+                        if (updateProgress >= 0) return@TextButton
+                        updateProgress = 0
+                        scope.launch {
+                            val apk = withContext(Dispatchers.IO) {
+                                com.dsh.miuix.cardface.core.UpdateInstaller.download(context, update.downloadUrl) { p ->
+                                    updateProgress = p
+                                }
+                            }
+                            updateProgress = -1
+                            if (apk == null) {
+                                model.notify("下载失败，请检查网络")
+                                return@launch
+                            }
+                            pendingUpdate = null
+                            if (!com.dsh.miuix.cardface.core.UpdateInstaller.canInstall(context)) {
+                                com.dsh.miuix.cardface.core.UpdateInstaller.openInstallPermission(context)
+                                model.notify("请允许安装未知来源应用后重试")
+                            } else if (!com.dsh.miuix.cardface.core.UpdateInstaller.install(context, apk)) {
+                                model.notify("无法调起安装器")
+                            }
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 
