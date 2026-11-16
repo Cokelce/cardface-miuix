@@ -158,6 +158,27 @@ fun CatalogScreen(
         if (mode == 1) repo.favorites() else repo.recents()
     }
 
+    // 通讯录式分组：进入分类时数据已全部加载，这里只做分组和字母定位。
+    val groups = browseItems.groupBy {
+        it.groupName.ifBlank { it.subtitle }.ifBlank { "其他" }
+    }
+    val anchors: Map<Char, Int> = remember(groups, collapsedGroups.toList(), mode, error, loading) {
+        if (mode != 0) return@remember emptyMap()
+        var index = 5 // header / 模式 / 分类 / 搜索 / 状态
+        if (error != null) index += 1
+        if (!loading && error == null && browseItems.isEmpty()) index += 1
+        val map = LinkedHashMap<Char, Int>()
+        groups.forEach { (name, list) ->
+            val letter = LetterIndex.initial(name)
+            if (!map.containsKey(letter)) map[letter] = index
+            index += 1 + if (name in collapsedGroups) 0 else list.size
+        }
+        map
+    }
+    val currentLetter = anchors.entries.lastOrNull {
+        it.value <= gridState.firstVisibleItemIndex
+    }?.key
+
     fun openSite() {
         runCatching {
             context.startActivity(
@@ -368,8 +389,6 @@ fun CatalogScreen(
                     CatalogStatusLine(
                         loading = loading,
                         total = pageInfo?.total ?: 0,
-                        page = pageInfo?.page ?: page,
-                        pages = pageInfo?.pages ?: 1,
                         cached = pageInfo?.cached == true,
                     )
                 }
@@ -423,9 +442,6 @@ fun CatalogScreen(
             }
 
             // 固定按 IP / 银行 / 城市分组；每组可点标题折叠。
-            val groups = browseItems.groupBy {
-                it.groupName.ifBlank { it.subtitle }.ifBlank { "其他" }
-            }
             groups.forEach { (group, list) ->
                 val collapsed = group in collapsedGroups
                 item(span = { GridItemSpan(maxLineSpan) }, key = "group:$group") {
@@ -490,6 +506,40 @@ fun CatalogScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 10.dp),
+                    )
+                }
+            }
+        }
+
+        // 通讯录式 A-Z 侧边栏：点字母跳到对应分组
+        if (mode == 0 && groups.size > 8) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 2.dp)
+                    .background(
+                        MiuixTheme.colorScheme.surface.copy(alpha = 0.66f),
+                        RoundedCornerShape(12.dp),
+                    )
+                    .padding(vertical = 6.dp, horizontal = 3.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                LetterIndex.LETTERS.forEach { letter ->
+                    val target = anchors[letter]
+                    val active = letter == currentLetter && target != null
+                    Text(
+                        text = letter.toString(),
+                        style = MiuixTheme.textStyles.footnote2,
+                        color = when {
+                            active -> MiuixTheme.colorScheme.primary
+                            target != null -> MiuixTheme.colorScheme.onSurfaceVariantSummary
+                            else -> MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.35f)
+                        },
+                        modifier = Modifier
+                            .clickable(enabled = target != null) {
+                                target?.let { scope.launch { gridState.animateScrollToItem(it) } }
+                            }
+                            .padding(horizontal = 4.dp, vertical = 1.dp),
                     )
                 }
             }
@@ -654,8 +704,6 @@ private fun CatalogTabRow(
 private fun CatalogStatusLine(
     loading: Boolean,
     total: Int,
-    page: Int,
-    pages: Int,
     cached: Boolean,
 ) {
     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -671,7 +719,7 @@ private fun CatalogStatusLine(
         Text(
             text = when {
                 loading -> "正在加载…"
-                total > 0 -> "$total 张 · 第 $page / $pages 页${if (cached) " · 离线缓存" else ""}"
+                total > 0 -> "共 $total 张${if (cached) " · 离线缓存" else ""}"
                 else -> "共 0 张"
             },
             style = MiuixTheme.textStyles.footnote1,
