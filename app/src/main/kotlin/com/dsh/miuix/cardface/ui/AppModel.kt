@@ -30,6 +30,7 @@ enum class Page(val route: String, val title: String) {
     Guide("guide", "使用说明"),
     Faq("faq", "常见问题"),
     About("about", "关于与捐赠"),
+    Version("version", "版本与更新"),
     Blacklist("blacklist", "卡面黑名单"),
     Catalog("catalog", "卡面库"),
     DevHook("hook", "自定义 hook 点"),

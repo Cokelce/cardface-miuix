@@ -93,8 +93,7 @@ fun SettingsScreen(
     onOpenGuide: () -> Unit,
     onOpenFaq: () -> Unit,
     onOpenAbout: () -> Unit,
-    onOpenDevHook: () -> Unit,
-    onOpenDevConsole: () -> Unit,
+    onOpenVersion: () -> Unit,
 ) {
     val context = LocalContext.current
     val prefs = model.prefs
@@ -108,7 +107,6 @@ fun SettingsScreen(
 
     var info by remember { mutableStateOf<Pair<String, String>?>(null) }
     var confirm by remember { mutableStateOf<ConfirmSpec?>(null) }
-    var versionTapCount by remember { mutableIntStateOf(0) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showDarkDialog by remember { mutableStateOf(false) }
     var showSyncDialog by remember { mutableStateOf(false) }
@@ -422,75 +420,13 @@ fun SettingsScreen(
             }
         }
 
-        // ---------- 高级 ----------
-        if (prefs.devMode) {
-            item(key = "advanced") {
-                SettingsGroup("高级（调试）") {
-                    SwitchPreference(
-                        title = "输出调试日志",
-                    startAction = { SettingRowIcon(MiuixIcons.Notes) },
-                        summary = "卡包进程会打印 hook 日志，排查时打开",
-                        checked = prefs.debugLog,
-                        onCheckedChange = { prefs.debugLog = it },
-                    )
-                    RowDivider()
-                    ArrowPreference(
-                        title = "自定义 hook 点",
-                    startAction = { SettingRowIcon(MiuixIcons.Link) },
-                        summary = "自动定位失败时，手动填类名 / 方法名",
-                        onClick = onOpenDevHook,
-                    )
-                    RowDivider()
-                    ArrowPreference(
-                        title = "诊断终端（root）",
-                    startAction = { SettingRowIcon(MiuixIcons.Tune) },
-                        summary = "执行 adb shell 命令、看 hook 日志、查卡包入口",
-                        onClick = onOpenDevConsole,
-                    )
-                    RowDivider()
-                    ArrowPreference(
-                        title = "映射同步方式",
-                        startAction = { SettingRowIcon(MiuixIcons.Tune) },
-                        summary = prefs.syncMode.label + "（推荐自动）",
-                        onClick = { showSyncDialog = true },
-                    )
-                    RowDivider()
-                    SwitchPreference(
-                        title = "兼容模式（复制图片到卡包目录）",
-                    startAction = { SettingRowIcon(MiuixIcons.Copy) },
-                        summary = "需要 root；开启后强制把图复制到卡包目录并用 file:// 加载",
-                        checked = prefs.compatCopy,
-                        onCheckedChange = { checked ->
-                            prefs.compatCopy = checked
-                            toast(if (checked) "兼容模式已开启，重启卡包后生效" else "兼容模式已关闭")
-                        },
-                    )
-                }
-            }
-        }
-
         // ---------- 关于 ----------
         item(key = "about") {
             SettingsGroup("关于") {
                 ArrowPreference(
                     title = "版本 v$versionName",
-                    summary = "内部 ${com.dsh.miuix.cardface.core.BuildInfo.INTERNAL_VERSION} · " +
-                        if (prefs.devMode) "高级设置已解锁" else "点 10 次解锁高级设置",
-                    onClick = {
-                        if (prefs.devMode) {
-                            onOpenAbout()
-                        } else {
-                            versionTapCount++
-                            val left = 10 - versionTapCount
-                            if (left <= 0) {
-                                prefs.devMode = true
-                                versionTapCount = 0
-                                toast("高级设置已解锁")
-                            } else {
-                                toast("再点 $left 次解锁高级设置")
-                            }
-                        }
-                    },
+                    summary = "内部 ${com.dsh.miuix.cardface.core.BuildInfo.INTERNAL_VERSION} · 检查更新 / 更新公告",
+                    onClick = onOpenVersion,
                 )
                 RowDivider()
                 ArrowPreference(title = "使用说明", onClick = onOpenGuide)

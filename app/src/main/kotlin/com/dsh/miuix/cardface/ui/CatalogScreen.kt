@@ -581,7 +581,7 @@ fun CatalogScreen(
                 ) {
                     Text(
                         text = "IP",
-                        style = MiuixTheme.textStyles.footnote1,
+                        style = MiuixTheme.textStyles.body2,
                         fontWeight = FontWeight.Bold,
                         color = MiuixTheme.colorScheme.onSurface,
                     )

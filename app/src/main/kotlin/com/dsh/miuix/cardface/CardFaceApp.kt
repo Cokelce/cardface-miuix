@@ -67,6 +67,7 @@ import com.dsh.miuix.cardface.ui.NavState
 import com.dsh.miuix.cardface.ui.Page
 import com.dsh.miuix.cardface.ui.Route
 import com.dsh.miuix.cardface.ui.SettingsScreen
+import com.dsh.miuix.cardface.ui.VersionScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -287,8 +288,7 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                     onOpenGuide = { nav.push(Route(Page.Guide)) },
                     onOpenFaq = { nav.push(Route(Page.Faq)) },
                     onOpenAbout = { nav.push(Route(Page.About)) },
-                    onOpenDevHook = { nav.push(Route(Page.DevHook)) },
-                    onOpenDevConsole = { nav.push(Route(Page.DevConsole)) },
+                    onOpenVersion = { nav.push(Route(Page.Version)) },
                 )
 
                 Page.Editor -> EditorScreen(
@@ -369,6 +369,12 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                             }
                         }
                     },
+                )
+
+                Page.Version -> VersionScreen(
+                    model = model,
+                    innerPadding = innerPadding,
+                    onBack = { nav.pop() },
                 )
 
                 Page.Guide -> GuideScreen(

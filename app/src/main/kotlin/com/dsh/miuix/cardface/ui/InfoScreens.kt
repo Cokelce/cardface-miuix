@@ -343,7 +343,7 @@ fun AboutScreen(
                 }
                 Spacer(Modifier.height(14.dp))
                 Text(
-                    text = "重构者：DeepSeek（AI 编程助手）",
+                    text = "重构者：DeepSeek（大肥鱼）",
                     style = MiuixTheme.textStyles.footnote1,
                     fontWeight = FontWeight.Medium,
                     color = MiuixTheme.colorScheme.primary,
@@ -477,7 +477,7 @@ fun AboutScreen(
                     )
                     AboutLine(
                         "重构者",
-                        "DeepSeek（AI 编程助手）：负责 Miuix 界面重构、卡面 hook 链路、" +
+                        "DeepSeek（大肥鱼）：负责 Miuix 界面重构、卡面 hook 链路、" +
                             "图像管线与性能优化。",
                     )
                 }
@@ -754,5 +754,182 @@ fun DevHookScreen(model: AppModel, innerPadding: PaddingValues, onBack: () -> Un
                 )
             }
         }
+    }
+}
+
+/** 版本与更新：从设置里的「版本」入口打开。 */
+@Composable
+fun VersionScreen(
+    model: AppModel,
+    innerPadding: PaddingValues,
+    onBack: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val prefs = model.prefs
+    val version = remember { DeviceBridge.versionName(context) }
+    var checking by remember { mutableStateOf(false) }
+    var info by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var autoCheckUpdate by remember { mutableStateOf(prefs.autoCheckUpdate) }
+
+    fun openUrl(url: String) {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .onFailure { model.notify("没有可打开链接的应用") }
+    }
+
+    fun checkUpdate() {
+        if (checking) return
+        checking = true
+        scope.launch {
+            val latest = withContext(Dispatchers.IO) { Updates.fetchLatest() }
+            checking = false
+            if (latest == null) {
+                info = "检查更新" to "检查失败，请检查网络后重试。"
+            } else if (latest.versionName.isNotBlank() && Updates.isNewer(latest.versionName, version)) {
+                info = "发现新版本 v${latest.versionName}" to
+                    "当前版本：v$version\n最新版本：v${latest.versionName}\n\n" +
+                    (latest.body.ifBlank { "暂无更新说明" }) +
+                    "\n\n项目地址：${latest.htmlUrl}"
+            } else {
+                info = "已是最新版本" to "当前 v$version 已经是最新版本。"
+            }
+        }
+    }
+
+    fun showAnnouncement() {
+        scope.launch {
+            val latest = withContext(Dispatchers.IO) { Updates.fetchLatest() }
+            info = if (latest == null) {
+                "更新公告" to "获取失败，请检查网络后重试。"
+            } else {
+                "更新公告 · v${latest.versionName}" to latest.body.ifBlank { "暂无更新说明" }
+            }
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(
+            top = innerPadding.calculateTopPadding(),
+            bottom = innerPadding.calculateBottomPadding() + 28.dp,
+        ),
+    ) {
+        item(key = "header") { BackHeader(title = "版本与更新", onBack = onBack) }
+
+        item(key = "version") {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                cornerRadius = 20.dp,
+                insideMargin = PaddingValues(20.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircleIcon(
+                        imageVector = MiuixIcons.BankCards,
+                        containerColor = MiuixTheme.colorScheme.primaryContainer,
+                        contentColor = MiuixTheme.colorScheme.onPrimaryContainer,
+                        size = 56.dp,
+                        iconSize = 30.dp,
+                    )
+                    Spacer(Modifier.size(14.dp))
+                    Column {
+                        Text(
+                            text = "卡面工坊",
+                            style = MiuixTheme.textStyles.headline2,
+                            fontWeight = FontWeight.Bold,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "v$version · 内部 ${com.dsh.miuix.cardface.core.BuildInfo.INTERNAL_VERSION}",
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                }
+            }
+        }
+
+        item(key = "update") {
+            Column {
+                SmallTitle(text = "更新")
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    cornerRadius = 20.dp,
+                    insideMargin = PaddingValues(vertical = 4.dp),
+                ) {
+                    ArrowPreference(
+                        title = "检查更新",
+                        summary = if (checking) "正在检查…" else "当前版本 v$version",
+                        onClick = { checkUpdate() },
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MiuixTheme.colorScheme.dividerLine,
+                    )
+                    ArrowPreference(
+                        title = "更新公告",
+                        summary = "查看最近版本的更新内容",
+                        onClick = { showAnnouncement() },
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MiuixTheme.colorScheme.dividerLine,
+                    )
+                    SwitchPreference(
+                        title = "自动检查更新",
+                        summary = "启动时检查 GitHub 最新版本",
+                        checked = autoCheckUpdate,
+                        onCheckedChange = {
+                            autoCheckUpdate = it
+                            prefs.autoCheckUpdate = it
+                        },
+                    )
+                }
+            }
+        }
+
+        item(key = "project") {
+            Column {
+                SmallTitle(text = "项目")
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    cornerRadius = 20.dp,
+                    insideMargin = PaddingValues(0.dp),
+                ) {
+                    ArrowPreference(
+                        title = "项目地址",
+                        summary = "github.com/MiamBao/cardface-miuix",
+                        onClick = { openUrl("https://github.com/MiamBao/cardface-miuix") },
+                    )
+                }
+            }
+        }
+
+        item(key = "footer") {
+            Text(
+                text = "GPL-3.0 · 更新信息来自 GitHub Releases",
+                style = MiuixTheme.textStyles.footnote2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+            )
+        }
+    }
+
+    val infoValue = info
+    if (infoValue != null) {
+        InfoDialog(
+            show = true,
+            title = infoValue.first,
+            message = infoValue.second,
+            onDismiss = { info = null },
+        )
     }
 }
