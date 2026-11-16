@@ -13,6 +13,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.PathData
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.foundation.border
+import top.yukonga.miuix.kmp.blur.BlendColorEntry
+import top.yukonga.miuix.kmp.blur.BlurBlendMode
+import top.yukonga.miuix.kmp.blur.BlurDefaults
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.blur.ProgressiveBlur
+import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
+import top.yukonga.miuix.kmp.blur.textureBlur
+import top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -283,11 +294,27 @@ fun CatalogScreen(
         }
     }
 
+    val glassSupported = isRuntimeShaderSupported()
+    val glassBackdrop = if (glassSupported) rememberLayerBackdrop() else null
+    val glassColors = if (glassSupported) {
+        BlurDefaults.blurColors(
+            blendColors = listOf(
+                BlendColorEntry(
+                    color = MiuixTheme.colorScheme.surface.copy(alpha = 0.32f),
+                    mode = BlurBlendMode.SrcOver,
+                ),
+            ),
+            saturation = 1.05f,
+        )
+    } else null
+
     Box(Modifier.fillMaxSize()) {
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
             state = gridState,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .then(if (glassBackdrop != null) Modifier.layerBackdrop(glassBackdrop) else Modifier),
             contentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
@@ -531,6 +558,25 @@ fun CatalogScreen(
             }
         }
 
+        // 顶部渐进模糊：列表滚到标题下面时出现，和 HyperOS 设置页一样
+        if (glassBackdrop != null && gridState.firstVisibleItemIndex > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .height(58.dp)
+                    .progressiveTextureBlur(
+                        backdrop = glassBackdrop,
+                        shape = RectangleShape,
+                        blurRadius = 18f,
+                        gradient = ProgressiveBlur.Top.copy(
+                            startFraction = 0f,
+                            endFraction = 1f,
+                        ),
+                    ),
+            )
+        }
+
         // 右下角悬浮侧边药丸：字母索引 / IP 跳转 / 回到顶部
         if (mode == 0 && groups.isNotEmpty()) {
             val scrolled = gridState.firstVisibleItemIndex > 3
@@ -543,7 +589,24 @@ fun CatalogScreen(
                     )
                     .width(52.dp)
                     .clip(RoundedCornerShape(26.dp))
-                    .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.92f)),
+                    .then(
+                        if (glassBackdrop != null && glassColors != null) {
+                            Modifier.textureBlur(
+                                backdrop = glassBackdrop,
+                                shape = RoundedCornerShape(26.dp),
+                                blurRadius = 18f,
+                                colors = glassColors,
+                            )
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.30f))
+                    .border(
+                        width = 1.dp,
+                        color = MiuixTheme.colorScheme.outline.copy(alpha = 0.22f),
+                        shape = RoundedCornerShape(26.dp),
+                    ),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Box(
