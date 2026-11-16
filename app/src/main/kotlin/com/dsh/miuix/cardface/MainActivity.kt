@@ -29,6 +29,8 @@ class MainActivity : ComponentActivity() {
             coil3.SingletonImageLoader.setUnsafe(loader)
         } catch (_: Throwable) {
         }
+        // 一次性屏蔽银行卡广告示意图，避免混进选图界面。
+        runCatching { com.dsh.miuix.cardface.core.AppPrefs(this).hidePromoBankFacesOnce() }
         // 初始化 LSPosed RemotePreferences 通道，并把本地映射迁移过去（异步、失败不影响使用）。
         try {
             com.dsh.miuix.cardface.core.RemotePrefsBridge.init()

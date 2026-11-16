@@ -169,6 +169,20 @@ class AppPrefs(context: Context) {
     fun allCardUrls(): List<String> =
         urls.getStringSet(KEY_ALL_CARD_URLS, emptySet()).orEmpty().toList().sorted()
 
+    /** 一次性把银行卡里的 3 张广告/示意图卡面加入黑名单，不再出现在选图界面。 */
+    fun hidePromoBankFacesOnce() {
+        if (settings.getBoolean("hidden_promo_bank_faces_v1", false)) return
+        val promo = setOf(
+            "https://f1.market.xiaomi.com/mfc/thumbnail/webp/w1080h1920q80/NextPay/049d37450fbc04115108de552ccb433d13f7f23d6",
+            "https://f1.market.xiaomi.com/mfc/thumbnail/webp/w1080h1920q80/NextPay/09561b469c2be4ad0177235193bf781920df7eef3",
+            "https://f1.market.xiaomi.com/mfc/thumbnail/webp/w1080h1920q80/NextPay/0cb94e4a8a0644d47318a94b224142d71846f74d0",
+        )
+        val next = blacklistedUrls() + promo
+        urls.edit().putStringSet(KEY_BLACK_CARD_URLS, next).apply()
+        settings.edit().putBoolean("hidden_promo_bank_faces_v1", true).apply()
+        touch()
+    }
+
     fun blacklistedUrls(): Set<String> =
         urls.getStringSet(KEY_BLACK_CARD_URLS, emptySet()).orEmpty().toSet()
 
