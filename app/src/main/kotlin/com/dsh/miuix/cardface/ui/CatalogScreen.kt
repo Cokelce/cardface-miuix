@@ -410,12 +410,6 @@ fun CatalogScreen(
                                 cached = pageInfo?.cached == true,
                             )
                         }
-                        if (mode == 0 && groups.size > 8) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                TextButton(text = "A-Z", onClick = { showIndex = true })
-                                TextButton(text = "IP 跳转", onClick = { showIpJump = true })
-                            }
-                        }
                     }
                 }
             } else {
@@ -537,48 +531,79 @@ fun CatalogScreen(
             }
         }
 
-        // 右下角悬浮按钮：A 打开字母索引，上箭头回到顶部
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(
-                    end = 20.dp,
-                    bottom = innerPadding.calculateBottomPadding() + 20.dp,
-                ),
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            if (mode == 0 && groups.isNotEmpty()) {
-                Card(
-                    modifier = Modifier.size(58.dp),
-                    cornerRadius = 29.dp,
-                    insideMargin = PaddingValues(14.dp),
-                    onClick = { showIndex = true },
+        // 右下角悬浮侧边药丸：字母索引 / IP 跳转 / 回到顶部
+        if (mode == 0 && groups.isNotEmpty()) {
+            val scrolled = gridState.firstVisibleItemIndex > 3
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(
+                        end = 12.dp,
+                        bottom = innerPadding.calculateBottomPadding() + 20.dp,
+                    )
+                    .width(52.dp)
+                    .clip(RoundedCornerShape(26.dp))
+                    .background(MiuixTheme.colorScheme.surface.copy(alpha = 0.92f)),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .clickable { showIndex = true },
+                    contentAlignment = Alignment.Center,
                 ) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "A",
-                            style = MiuixTheme.textStyles.headline2,
-                            fontWeight = FontWeight.Bold,
-                            color = MiuixTheme.colorScheme.primary,
-                        )
-                    }
+                    Text(
+                        text = "A",
+                        style = MiuixTheme.textStyles.title3,
+                        fontWeight = FontWeight.Black,
+                        color = MiuixTheme.colorScheme.primary,
+                    )
                 }
-            }
-            if (gridState.firstVisibleItemIndex > 3) {
-                Card(
-                    modifier = Modifier.size(58.dp),
-                    cornerRadius = 29.dp,
-                    insideMargin = PaddingValues(14.dp),
-                    onClick = {
-                        scope.launch { gridState.animateScrollToItem(0) }
-                    },
+                Box(
+                    modifier = Modifier
+                        .width(24.dp)
+                        .height(1.dp)
+                        .background(MiuixTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clickable { showIpJump = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = "IP",
+                        style = MiuixTheme.textStyles.footnote1,
+                        fontWeight = FontWeight.Bold,
+                        color = MiuixTheme.colorScheme.onSurface,
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .width(24.dp)
+                        .height(1.dp)
+                        .background(MiuixTheme.colorScheme.outline.copy(alpha = 0.25f)),
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .clickable(enabled = scrolled) {
+                            if (scrolled) scope.launch { gridState.animateScrollToItem(0) }
+                        },
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = BackToTopArrow,
                         contentDescription = "回到顶部",
-                        tint = MiuixTheme.colorScheme.primary,
-                        modifier = Modifier.size(30.dp),
+                        tint = if (scrolled) {
+                            MiuixTheme.colorScheme.primary
+                        } else {
+                            MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.35f)
+                        },
+                        modifier = Modifier.size(26.dp),
                     )
                 }
             }
