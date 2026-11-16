@@ -247,6 +247,7 @@ fun GalleryScreen(
                     onClose = { preview = null },
                     onShare = {
                         posterSource = image
+                        preview = null
                         posterOpen = true
                         buildPoster(image, posterStyle, posterPalette)
                     },
@@ -318,7 +319,7 @@ fun GalleryScreen(
                         text = "版式",
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp),
                     )
                     Row(
                         modifier = Modifier.padding(horizontal = 12.dp),
@@ -343,7 +344,7 @@ fun GalleryScreen(
                         text = "样式",
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
                     )
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 12.dp),
@@ -364,7 +365,7 @@ fun GalleryScreen(
                         text = "配色",
                         style = MiuixTheme.textStyles.footnote1,
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 2.dp),
                     )
                     LazyRow(
                         contentPadding = PaddingValues(horizontal = 12.dp),

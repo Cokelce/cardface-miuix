@@ -49,21 +49,7 @@ object CardPoster {
         val textColor = Color.parseColor(palette.text)
         val subColor = Color.parseColor(palette.sub)
 
-        // 统一的柔光渐变背景（第一版风格）
-        val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = LinearGradient(
-                0f, 0f, W.toFloat(), H.toFloat(),
-                intArrayOf(Color.parseColor(palette.bgFrom), Color.parseColor(palette.bgTo)),
-                null, Shader.TileMode.CLAMP,
-            )
-        }
-        canvas.drawRect(0f, 0f, W.toFloat(), H.toFloat(), bg)
-        val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = blend(accent, Color.WHITE, 0.72f)
-            maskFilter = android.graphics.BlurMaskFilter(150f, android.graphics.BlurMaskFilter.Blur.NORMAL)
-        }
-        canvas.drawCircle(W * 0.12f, H * 0.12f, W * 0.14f, glow)
-        canvas.drawCircle(W * 0.9f, H * 0.88f, W * 0.2f, glow)
+        drawFluidBackground(canvas, W, H, accent, palette, paletteIndex == 3)
 
         val bold = Typeface.create("sans-serif", Typeface.BOLD)
         val normal = Typeface.create("sans-serif", Typeface.NORMAL)
@@ -80,35 +66,35 @@ object CardPoster {
 
         when {
             portrait && style == Style.CLASSIC -> {
-                val rect = RectF(120f, 470f, 2040f, 1682f)
+                val rect = RectF(150f, 500f, 2010f, 1674f)
                 drawCard(canvas, card, rect, accent)
-                p.typeface = bold; p.textSize = 86f; p.color = textColor
-                canvas.drawText(clip(name), 120f, 1900f, p)
+                p.typeface = bold; p.textSize = 88f; p.color = textColor
+                canvas.drawText(clip(name), 150f, 1860f, p)
                 p.typeface = normal; p.textSize = 44f; p.color = subColor
-                canvas.drawText("用喜欢的画面，点亮每天的第一眼。", 122f, 1970f, p)
-                accentBar(canvas, 120f, 2030f, 380f, accent)
+                canvas.drawText("用喜欢的画面，点亮每天的第一眼。", 152f, 1932f, p)
+                accentBar(canvas, 150f, 1994f, 380f, accent)
             }
             portrait && style == Style.SPLIT -> {
-                p.typeface = bold; p.textSize = 100f; p.color = textColor
-                canvas.drawText(clip(name), 120f, 470f, p)
+                p.typeface = bold; p.textSize = 96f; p.color = textColor
+                canvas.drawText(clip(name), 150f, 480f, p)
                 p.typeface = normal; p.textSize = 42f; p.color = subColor
-                canvas.drawText("把喜欢的画面，装进每天都会刷的卡里。", 122f, 540f, p)
-                accentBar(canvas, 120f, 590f, 340f, accent)
-                val rect = RectF(120f, 680f, 2040f, 1892f)
+                canvas.drawText("把喜欢的画面，装进每天都会刷的卡里。", 152f, 552f, p)
+                accentBar(canvas, 150f, 606f, 340f, accent)
+                val rect = RectF(150f, 700f, 2010f, 1874f)
                 drawCard(canvas, card, rect, accent)
                 p.textSize = 36f; p.color = subColor
-                canvas.drawText("LSPOSED · 小米智能卡卡面", 120f, 1970f, p)
+                canvas.drawText("LSPOSED · 小米智能卡卡面", 150f, 1970f, p)
             }
             portrait && style == Style.MINIMAL -> {
-                p.typeface = bold; p.textSize = 72f; p.color = textColor
+                p.typeface = bold; p.textSize = 76f; p.color = textColor
                 p.textAlign = Paint.Align.CENTER
-                canvas.drawText(clip(name), W / 2f, 640f, p)
+                canvas.drawText(clip(name), W / 2f, 690f, p)
                 p.textAlign = Paint.Align.LEFT
-                val rect = RectF(280f, 760f, 1880f, 1771f)
+                val rect = RectF(260f, 820f, 1900f, 1855f)
                 drawCard(canvas, card, rect, accent)
-                p.typeface = normal; p.textSize = 36f; p.color = subColor
+                p.typeface = normal; p.textSize = 38f; p.color = subColor
                 p.textAlign = Paint.Align.CENTER
-                canvas.drawText("用喜欢的画面，点亮每天的第一眼。", W / 2f, 1880f, p)
+                canvas.drawText("用喜欢的画面，点亮每天的第一眼。", W / 2f, 1960f, p)
                 p.textAlign = Paint.Align.LEFT
             }
             !portrait && style == Style.CLASSIC -> {
@@ -163,6 +149,66 @@ object CardPoster {
         for (i in 0..4) canvas.drawCircle(120f + i * 46f, H - 225f, 9f, dot)
         card.recycle()
         return out
+    }
+
+    /** 澎湃设置那种流动渐变：柔光色块 + 弧形光带。 */
+    private fun drawFluidBackground(
+        canvas: Canvas,
+        W: Int,
+        H: Int,
+        accent: Int,
+        palette: Palette,
+        dark: Boolean,
+    ) {
+        val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(
+                0f, 0f, W.toFloat(), H.toFloat(),
+                intArrayOf(Color.parseColor(palette.bgFrom), Color.parseColor(palette.bgTo)),
+                null, Shader.TileMode.CLAMP,
+            )
+        }
+        canvas.drawRect(0f, 0f, W.toFloat(), H.toFloat(), bg)
+
+        val colors = if (dark) {
+            listOf(accent, Color.parseColor("#7B6CFF"), Color.parseColor("#2E5C9E"), Color.parseColor("#1B2A44"))
+        } else {
+            listOf(accent, Color.parseColor("#9A8CFF"), Color.parseColor("#7ED6FF"), Color.WHITE)
+        }
+        val spots = listOf(
+            floatArrayOf(W * 0.12f, H * 0.10f, W * 0.34f),
+            floatArrayOf(W * 0.88f, H * 0.24f, W * 0.31f),
+            floatArrayOf(W * 0.08f, H * 0.78f, W * 0.36f),
+            floatArrayOf(W * 0.82f, H * 0.90f, W * 0.33f),
+        )
+        spots.forEachIndexed { i, s ->
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = colors[i % colors.size]
+                alpha = if (dark) 46 else 60
+                maskFilter = android.graphics.BlurMaskFilter(W * 0.16f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+            }
+            canvas.drawCircle(s[0], s[1], s[2], paint)
+        }
+
+        // 流动光带：两条大弧度曲线
+        val ribbon = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE
+            strokeWidth = W * 0.16f
+            strokeCap = Paint.Cap.ROUND
+            color = colors[1]
+            alpha = if (dark) 30 else 38
+            maskFilter = android.graphics.BlurMaskFilter(W * 0.12f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+        }
+        val path = Path().apply {
+            moveTo(-W * 0.1f, H * 0.28f)
+            cubicTo(W * 0.28f, H * 0.10f, W * 0.66f, H * 0.46f, W * 1.1f, H * 0.18f)
+        }
+        canvas.drawPath(path, ribbon)
+        val ribbon2 = Paint(ribbon).apply { color = colors[2]; alpha = if (dark) 26 else 34 }
+        val path2 = Path().apply {
+            moveTo(-W * 0.05f, H * 0.72f)
+            cubicTo(W * 0.35f, H * 0.92f, W * 0.62f, H * 0.55f, W * 1.08f, H * 0.82f)
+        }
+        canvas.drawPath(path2, ribbon2)
     }
 
     private fun drawCard(canvas: Canvas, card: Bitmap, rect: RectF, accent: Int) {
