@@ -165,6 +165,9 @@ class AppModel(context: Context) {
     /** 图库大图预览是否打开：用于隐藏底栏、拦截返回。 */
     var galleryPreviewVisible by mutableStateOf(false)
 
+    /** 海报分享页是否打开：用于隐藏底栏。 */
+    var posterPreviewVisible by mutableStateOf(false)
+
     /** 卡面库选图后是否回到编辑页（false 表示存进图库）。 */
     var catalogForEditor by mutableStateOf(false)
         private set

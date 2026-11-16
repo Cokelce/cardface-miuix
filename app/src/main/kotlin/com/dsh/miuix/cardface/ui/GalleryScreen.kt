@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -69,6 +70,7 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
+import top.yukonga.miuix.kmp.icon.extended.Back
 import top.yukonga.miuix.kmp.icon.extended.Clear
 import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.Delete
@@ -99,6 +101,7 @@ fun GalleryScreen(
     var posterStyle by remember { mutableStateOf(com.dsh.miuix.cardface.core.CardPoster.Style.MAGAZINE) }
     var posterPalette by remember { mutableIntStateOf(0) }
     var posterLoading by remember { mutableStateOf(false) }
+    var posterOpen by remember { mutableStateOf(false) }
     val accent = MiuixTheme.colorScheme.primary.toArgb()
 
     fun buildPoster(image: GalleryImage, style: com.dsh.miuix.cardface.core.CardPoster.Style, palette: Int) {
@@ -124,6 +127,8 @@ fun GalleryScreen(
     DisposableEffect(Unit) {
         onDispose { model.galleryPreviewVisible = false }
     }
+    LaunchedEffect(posterOpen) { model.posterPreviewVisible = posterOpen }
+    BackHandler(enabled = posterOpen) { posterOpen = false }
     BackHandler(enabled = preview != null) { preview = null }
 
     val revision = model.prefs.revision + model.storeRevision
@@ -241,27 +246,85 @@ fun GalleryScreen(
                     onClose = { preview = null },
                     onShare = {
                         posterSource = image
+                        posterOpen = true
                         buildPoster(image, posterStyle, posterPalette)
                     },
                 )
             }
         }
 
-        poster?.let { bmp ->
-            Box(
+        if (posterOpen) {
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.92f)),
+                    .background(MiuixTheme.colorScheme.background),
             ) {
-                Column(
+                Row(
                     modifier = Modifier
-                        .align(Alignment.TopCenter)
                         .fillMaxWidth()
-                        .padding(top = 18.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                        .statusBarsPadding()
+                        .padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        com.dsh.miuix.cardface.core.CardPoster.Style.entries.forEach { st ->
+                    IconButton(onClick = { posterOpen = false }) {
+                        Icon(
+                            imageVector = MiuixIcons.Back,
+                            contentDescription = "返回",
+                            tint = MiuixTheme.colorScheme.onBackground,
+                        )
+                    }
+                    Text(
+                        text = "分享海报",
+                        style = MiuixTheme.textStyles.title3,
+                        color = MiuixTheme.colorScheme.onBackground,
+                        modifier = Modifier.padding(start = 2.dp),
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    poster?.let { bmp ->
+                        Image(
+                            bitmap = bmp.asImageBitmap(),
+                            contentDescription = "分享海报",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(4f / 3f)
+                                .clip(RoundedCornerShape(16.dp)),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                    if (posterLoading) {
+                        Text(
+                            text = "生成中…",
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                }
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    cornerRadius = 20.dp,
+                    insideMargin = PaddingValues(vertical = 10.dp),
+                ) {
+                    Text(
+                        text = "样式",
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(com.dsh.miuix.cardface.core.CardPoster.Style.entries.size) { i ->
+                            val st = com.dsh.miuix.cardface.core.CardPoster.Style.entries[i]
                             TextButton(
                                 text = (if (posterStyle == st) "● " else "") + st.label,
                                 onClick = {
@@ -271,44 +334,54 @@ fun GalleryScreen(
                             )
                         }
                     }
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        com.dsh.miuix.cardface.core.CardPoster.palettes.forEachIndexed { idx, pal ->
+                    Text(
+                        text = "配色",
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(com.dsh.miuix.cardface.core.CardPoster.palettes.size) { i ->
                             TextButton(
-                                text = (if (posterPalette == idx) "● " else "") + pal.label,
+                                text = (if (posterPalette == i) "● " else "") + com.dsh.miuix.cardface.core.CardPoster.palettes[i].label,
                                 onClick = {
-                                    posterPalette = idx
-                                    posterSource?.let { buildPoster(it, posterStyle, idx) }
+                                    posterPalette = i
+                                    posterSource?.let { buildPoster(it, posterStyle, i) }
                                 },
                             )
                         }
                     }
-                    if (posterLoading) Text("生成中…", color = Color.White, style = MiuixTheme.textStyles.footnote1)
                 }
-                Image(
-                    bitmap = bmp.asImageBitmap(),
-                    contentDescription = "分享海报",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 92.dp),
-                    contentScale = ContentScale.Fit,
-                )
                 Row(
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = 28.dp),
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .navigationBarsPadding(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    TextButton(text = "分享", onClick = {
-                        val file = com.dsh.miuix.cardface.core.CardPoster.save(context, bmp)
-                        com.dsh.miuix.cardface.core.CardShare.shareImage(context, file)
-                    })
-                    TextButton(text = "保存到相册", onClick = {
-                        val ok = com.dsh.miuix.cardface.core.CardPoster.saveToGallery(
-                            context, bmp, "卡面工坊海报",
-                        )
-                        model.notify(if (ok) "海报已保存到相册" else "保存失败")
-                    })
-                    TextButton(text = "关闭", onClick = { poster = null })
+                    TextButton(
+                        text = "保存到相册",
+                        onClick = {
+                            poster?.let { bmp ->
+                                val ok = com.dsh.miuix.cardface.core.CardPoster.saveToGallery(context, bmp, "卡面工坊海报")
+                                model.notify(if (ok) "海报已保存到相册" else "保存失败")
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(
+                        text = "分享",
+                        onClick = {
+                            poster?.let { bmp ->
+                                val file = com.dsh.miuix.cardface.core.CardPoster.save(context, bmp)
+                                com.dsh.miuix.cardface.core.CardShare.shareImage(context, file)
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
                 }
             }
         }
