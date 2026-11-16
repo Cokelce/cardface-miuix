@@ -491,6 +491,30 @@ fun CatalogScreen(
                 }
             }
         }
+
+        // 回到顶部：滚下去之后一键跳回
+        if (gridState.firstVisibleItemIndex > 3) {
+            Card(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(
+                        end = 20.dp,
+                        bottom = innerPadding.calculateBottomPadding() + 20.dp,
+                    ),
+                cornerRadius = 22.dp,
+                insideMargin = PaddingValues(10.dp),
+                onClick = {
+                    scope.launch { gridState.animateScrollToItem(0) }
+                },
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.ExpandLess,
+                    contentDescription = "回到顶部",
+                    tint = MiuixTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
     }
 
     val current = selected
