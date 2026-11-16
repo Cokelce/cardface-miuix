@@ -31,8 +31,11 @@ class CatalogRepository(context: Context) {
     private val downloadDir = File(app.cacheDir, "catalog-download").apply { mkdirs() }
     private val store = ImageStore(app)
     private val prefs = app.getSharedPreferences("catalog_library", Context.MODE_PRIVATE)
+    private val bankAllFile = File(cacheDir, "bank-all.json")
     private val ipAllFile = File(cacheDir, "ip-all.json")
     private val transitAllFile = File(cacheDir, "transit-all.json")
+    @Volatile
+    private var bankAllItems: List<CatalogItem>? = null
     @Volatile
     private var ipAllItems: List<CatalogItem>? = null
     @Volatile
@@ -42,54 +45,16 @@ class CatalogRepository(context: Context) {
     // ---------- 目录 ----------
 
     suspend fun load(category: CatalogCategory, page: Int, search: String, filter: String): CatalogPage {
-        if (category == CatalogCategory.ANIME) return loadFiltered(animeItems(), page, search, filter)
-        if (category == CatalogCategory.TOKUSATSU) return loadFiltered(tokusatsuItems(), page, search, filter)
-        val primary = loadQuery(
-            HibankCatalogSource.queryUrl(category, page, search, filter),
-            category,
-        )
-        // 搜索词在“卡面名”里找不到时，再按分类的第二个字段（银行/城市/IP 名）找一次。
-        if (primary.items.isEmpty() && search.isNotBlank()) {
-            val altUrl = HibankCatalogSource.queryUrl(
-                category, page, search, filter,
-                searchKeyOverride = category.alternateSearchKey,
-            )
-            runCatching { loadQuery(altUrl, category) }
-                .getOrNull()
-                ?.takeIf { it.items.isNotEmpty() }
-                ?.let { return it }
+        // 一次性加载整个分类后本地分组、排序、搜索：分组模式下列表顺序稳定，
+        // 不会因为分页追加导致新卡片插到已经看过的位置上面。
+        val all = when (category) {
+            CatalogCategory.BANK -> bankAll()
+            CatalogCategory.TRANSIT -> transitAll()
+            CatalogCategory.IP -> ipAll()
+            CatalogCategory.ANIME -> animeItems()
+            CatalogCategory.TOKUSATSU -> tokusatsuItems()
         }
-        return primary
-    }
-
-    private suspend fun loadQuery(url: String, category: CatalogCategory): CatalogPage {
-        val cacheFile = File(cacheDir, HibankCatalogSource.sha1(url).take(20) + ".json")
-        return try {
-            val text = requestText(url)
-            val parsed = HibankCatalogSource.parse(text, category)
-            runCatching {
-                val tmp = File.createTempFile(".catalog-", ".part", cacheDir)
-                try {
-                    tmp.writeText(text)
-                    if (!tmp.renameTo(cacheFile)) tmp.copyTo(cacheFile, overwrite = true)
-                } finally {
-                    tmp.delete()
-                }
-                trimFolder(cacheDir, 6L * 1024 * 1024)
-            }
-            parsed
-        } catch (cancel: CancellationException) {
-            throw cancel
-        } catch (t: Throwable) {
-            val cached = cacheFile.takeIf {
-                it.isFile && it.length() in 1..(2L * 1024 * 1024) &&
-                    System.currentTimeMillis() - it.lastModified() < 7L * 24 * 3600 * 1000
-            }?.let { file ->
-                runCatching { HibankCatalogSource.parse(file.readText(), category).copy(cached = true) }
-                    .getOrNull()
-            }
-            cached ?: throw t
-        }
+        return loadFiltered(all, page, search, filter, pageSize = 50_000)
     }
 
     private suspend fun requestText(url: String): String {
@@ -248,23 +213,48 @@ class CatalogRepository(context: Context) {
     private suspend fun tokusatsuItems(): List<CatalogItem> =
         ipAll().filter { TokusatsuIps.isTokusatsu(it.subtitle) }
 
-    private suspend fun ipAll(): List<CatalogItem> {
-        ipAllItems?.let { return it }
-        synchronized(allLock) { ipAllItems?.let { return it } }
-        loadListFile(ipAllFile)?.let { ipAllItems = it; return it }
-        val fetched = fetchAll("face_ctu_origin", CatalogCategory.IP)
-        ipAllItems = fetched
-        runCatching { saveListFile(ipAllFile, fetched) }
-        return fetched
-    }
+    private suspend fun bankAll(): List<CatalogItem> = allFor(bankAllFile, "face", CatalogCategory.BANK)
 
-    private suspend fun transitAll(): List<CatalogItem> {
-        transitAllItems?.let { return it }
-        synchronized(allLock) { transitAllItems?.let { return it } }
-        loadListFile(transitAllFile)?.let { transitAllItems = it; return it }
-        val fetched = fetchAll("face_ctu", CatalogCategory.TRANSIT)
-        transitAllItems = fetched
-        runCatching { saveListFile(transitAllFile, fetched) }
+    private suspend fun ipAll(): List<CatalogItem> = allFor(ipAllFile, "face_ctu_origin", CatalogCategory.IP)
+
+    private suspend fun transitAll(): List<CatalogItem> = allFor(transitAllFile, "face_ctu", CatalogCategory.TRANSIT)
+
+    private suspend fun allFor(
+        file: File,
+        resource: String,
+        category: CatalogCategory,
+    ): List<CatalogItem> {
+        when (category) {
+            CatalogCategory.BANK -> bankAllItems?.let { return it }
+            CatalogCategory.IP -> ipAllItems?.let { return it }
+            CatalogCategory.TRANSIT -> transitAllItems?.let { return it }
+            else -> Unit
+        }
+        synchronized(allLock) {
+            when (category) {
+                CatalogCategory.BANK -> bankAllItems?.let { return it }
+                CatalogCategory.IP -> ipAllItems?.let { return it }
+                CatalogCategory.TRANSIT -> transitAllItems?.let { return it }
+                else -> Unit
+            }
+        }
+        loadListFile(file)?.let {
+            when (category) {
+                CatalogCategory.BANK -> bankAllItems = it
+                CatalogCategory.IP -> ipAllItems = it
+                CatalogCategory.TRANSIT -> transitAllItems = it
+                else -> Unit
+            }
+            return it
+        }
+        val fetched = fetchAll(resource, category)
+        when (category) {
+            CatalogCategory.BANK -> bankAllItems = fetched
+            CatalogCategory.IP -> ipAllItems = fetched
+            CatalogCategory.TRANSIT -> transitAllItems = fetched
+            else -> Unit
+        }
+        runCatching { saveListFile(file, fetched) }
         return fetched
     }
 
@@ -320,6 +310,7 @@ class CatalogRepository(context: Context) {
         page: Int,
         search: String,
         filter: String,
+        pageSize: Int = 24,
     ): CatalogPage {
         var list = all
         if (search.isNotBlank()) {
@@ -339,7 +330,6 @@ class CatalogRepository(context: Context) {
         list = list.sortedWith(
             compareBy({ it.groupName.ifBlank { it.subtitle } }, { it.title }),
         )
-        val pageSize = 24
         val pages = maxOf(1, (list.size + pageSize - 1) / pageSize)
         val p = page.coerceIn(1, pages)
         return CatalogPage(
