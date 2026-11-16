@@ -195,6 +195,11 @@ object BitmapPipeline {
                 ceil(crop.bottom.toDouble()).toInt(),
             )
         }
+        // 裁剪区域小于目标卡面时，先用 Real-CUGAN-SE 2x 超分，再降采样；足够大则直接降采样。
+        if (px.width < opts.targetW || px.height < opts.targetH) {
+            val up = SuperResolution.upscaleIfNeeded(context, px.toBitmap(), opts.targetW, opts.targetH)
+            if (up != null) px = up.toPixelImage()
+        }
         var out = Resampler.lanczos3(px, opts.targetW, opts.targetH, opts.linearLight)
         if (opts.roundRadiusPx > 0f) {
             out = ImageMath.roundCorners(out, opts.roundRadiusPx)
