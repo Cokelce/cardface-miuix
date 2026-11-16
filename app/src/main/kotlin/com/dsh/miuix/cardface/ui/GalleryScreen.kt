@@ -98,8 +98,9 @@ fun GalleryScreen(
     var renameTarget by remember { mutableStateOf<GalleryImage?>(null) }
     var poster by remember { mutableStateOf<Bitmap?>(null) }
     var posterSource by remember { mutableStateOf<GalleryImage?>(null) }
-    var posterStyle by remember { mutableStateOf(com.dsh.miuix.cardface.core.CardPoster.Style.MAGAZINE) }
+    var posterStyle by remember { mutableStateOf(com.dsh.miuix.cardface.core.CardPoster.Style.CLASSIC) }
     var posterPalette by remember { mutableIntStateOf(0) }
+    var posterPortrait by remember { mutableStateOf(true) }
     var posterLoading by remember { mutableStateOf(false) }
     var posterOpen by remember { mutableStateOf(false) }
     val accent = MiuixTheme.colorScheme.primary.toArgb()
@@ -110,7 +111,7 @@ fun GalleryScreen(
             val bmp = withContext(Dispatchers.IO) {
                 runCatching {
                     com.dsh.miuix.cardface.core.CardPoster.create(
-                        context, image.file, image.name.substringBeforeLast('.'), style, palette,
+                        context, image.file, image.name.substringBeforeLast('.'), style, palette, posterPortrait,
                     )
                 }.getOrNull()
             }
@@ -293,7 +294,7 @@ fun GalleryScreen(
                             contentDescription = "分享海报",
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .aspectRatio(4f / 3f)
+                                .aspectRatio(if (posterPortrait) 3f / 4f else 4f / 3f)
                                 .clip(RoundedCornerShape(16.dp)),
                             contentScale = ContentScale.Fit,
                         )
@@ -313,6 +314,31 @@ fun GalleryScreen(
                     cornerRadius = 20.dp,
                     insideMargin = PaddingValues(vertical = 10.dp),
                 ) {
+                    Text(
+                        text = "版式",
+                        style = MiuixTheme.textStyles.footnote1,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        TextButton(
+                            text = (if (posterPortrait) "● " else "") + "竖版",
+                            onClick = {
+                                posterPortrait = true
+                                posterSource?.let { buildPoster(it, posterStyle, posterPalette) }
+                            },
+                        )
+                        TextButton(
+                            text = (if (!posterPortrait) "● " else "") + "横版",
+                            onClick = {
+                                posterPortrait = false
+                                posterSource?.let { buildPoster(it, posterStyle, posterPalette) }
+                            },
+                        )
+                    }
                     Text(
                         text = "样式",
                         style = MiuixTheme.textStyles.footnote1,
