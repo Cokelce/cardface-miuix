@@ -8,110 +8,166 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import android.provider.MediaStore
+import com.dsh.miuix.cardface.imaging.Resampler
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-/** 把卡面生成一张 3:4 的海报，用于分享/收藏。 */
+/** 把卡面生成 4:3 高清海报（2880×2160），多种样式/配色。 */
 object CardPoster {
 
-    const val W = 1080
-    const val H = 1440
+    const val W = 2880
+    const val H = 2160
 
-    fun create(context: Context, image: File, name: String, accent: Int): Bitmap {
+    enum class Style(val label: String) { MAGAZINE("杂志"), POSTCARD("明信片"), FILM("胶片") }
+    data class Palette(val label: String, val bgFrom: String, val bgTo: String, val text: String, val sub: String, val accent: String)
+    val palettes = listOf(
+        Palette("雾蓝", "#F7FAFF", "#E7F0FF", "#0B1B33", "#64758C", "#3482FF"),
+        Palette("暖沙", "#FFFBF5", "#F2E5D5", "#2B2118", "#7C6B5A", "#C98A4B"),
+        Palette("樱粉", "#FFF6FA", "#FBE4EF", "#2A1220", "#876070", "#E84A8A"),
+        Palette("墨黑", "#0A0D12", "#151B26", "#F5F7FA", "#9AA5B5", "#6B93FF"),
+    )
+
+    fun create(
+        context: Context,
+        image: File,
+        name: String,
+        style: Style = Style.MAGAZINE,
+        paletteIndex: Int = 0,
+    ): Bitmap {
         val card = decode(image) ?: error("图片读取失败")
+        val palette = palettes[paletteIndex.coerceIn(palettes.indices)]
+        val dark = paletteIndex == 3
         val out = Bitmap.createBitmap(W, H, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
-        val accentColor = if (Color.alpha(accent) == 0) Color.parseColor("#3482FF") else accent
-
-        // 背景：主色柔光渐变
         val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = LinearGradient(
                 0f, 0f, W.toFloat(), H.toFloat(),
-                intArrayOf(
-                    blend(accentColor, Color.WHITE, 0.82f),
-                    Color.WHITE,
-                    blend(accentColor, Color.WHITE, 0.92f),
-                ),
-                floatArrayOf(0f, 0.55f, 1f),
-                Shader.TileMode.CLAMP,
+                intArrayOf(Color.parseColor(palette.bgFrom), Color.parseColor(palette.bgTo)),
+                null, Shader.TileMode.CLAMP,
             )
         }
         canvas.drawRect(0f, 0f, W.toFloat(), H.toFloat(), bg)
-        val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = blend(accentColor, Color.WHITE, 0.55f)
-            maskFilter = android.graphics.BlurMaskFilter(120f, android.graphics.BlurMaskFilter.Blur.NORMAL)
-        }
-        canvas.drawCircle(120f, 180f, 180f, glow)
-        canvas.drawCircle(980f, 1260f, 240f, glow)
-
-        // 顶部品牌
+        val accent = Color.parseColor(palette.accent)
+        val textColor = Color.parseColor(palette.text)
+        val subColor = Color.parseColor(palette.sub)
         val bold = Typeface.create("sans-serif", Typeface.BOLD)
         val normal = Typeface.create("sans-serif", Typeface.NORMAL)
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
-        p.typeface = bold
-        p.textSize = 44f
-        p.color = Color.parseColor("#0B1B33")
-        canvas.drawText("卡面工坊", 72f, 132f, p)
-        p.typeface = normal
-        p.textSize = 24f
-        p.color = Color.parseColor("#5A6B82")
-        canvas.drawText("CARD FACE STUDIO", 74f, 172f, p)
-        p.textSize = 24f
-        p.textAlign = Paint.Align.RIGHT
-        p.color = Color.parseColor("#7A8AA0")
-        canvas.drawText(SimpleDateFormat("yyyy.MM.dd", Locale.CHINA).format(Date()), 1008f, 132f, p)
+
+        // 品牌头部
+        p.typeface = bold; p.textSize = 82f; p.color = textColor
+        canvas.drawText("卡面工坊", 120f, 170f, p)
+        p.typeface = normal; p.textSize = 40f; p.color = subColor
+        canvas.drawText("CARD FACE STUDIO", 122f, 232f, p)
+        p.textAlign = Paint.Align.RIGHT; p.textSize = 42f
+        canvas.drawText(SimpleDateFormat("yyyy.MM.dd", Locale.CHINA).format(Date()), 2760f, 170f, p)
         p.textAlign = Paint.Align.LEFT
 
-        // 卡面卡片 + 阴影
-        val left = 60f
-        val top = 252f
-        val rect = RectF(left, top, left + 960f, top + 606f)
-        val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#330B1B33")
-            maskFilter = android.graphics.BlurMaskFilter(38f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+        val cardRect: RectF
+        when (style) {
+            Style.MAGAZINE -> {
+                cardRect = RectF(120f, 470f, 1920f, 1606f)
+                drawCard(canvas, card, cardRect, accent)
+                p.typeface = bold; p.textSize = 96f; p.color = textColor
+                drawWrapped(canvas, canvasText(name.ifBlank { "我的卡面" }), 2080f, 760f, 640f, p, 3)
+                p.typeface = normal; p.textSize = 46f; p.color = subColor
+                canvas.drawText("用喜欢的画面，", 2084f, 1100f, p)
+                canvas.drawText("点亮每天的第一眼。", 2084f, 1166f, p)
+                val bar = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accent }
+                canvas.drawRoundRect(RectF(2084f, 1240f, 2436f, 1258f), 9f, 9f, bar)
+            }
+            Style.POSTCARD -> {
+                cardRect = RectF(440f, 540f, 2440f, 1802f)
+                drawCard(canvas, card, cardRect, accent)
+                p.typeface = bold; p.textSize = 84f; p.color = textColor
+                p.textAlign = Paint.Align.CENTER
+                canvas.drawText(name.ifBlank { "我的卡面" }, W / 2f, 1930f, p)
+                p.typeface = normal; p.textSize = 46f; p.color = subColor
+                canvas.drawText("用喜欢的画面，点亮每天的第一眼。", W / 2f, 2000f, p)
+                p.textAlign = Paint.Align.LEFT
+            }
+            Style.FILM -> {
+                val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = accent; alpha = 40
+                    maskFilter = android.graphics.BlurMaskFilter(110f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+                }
+                canvas.drawCircle(1440f, 1050f, 700f, glow)
+                cardRect = RectF(490f, 500f, 2390f, 1700f)
+                drawCard(canvas, card, cardRect, accent)
+                p.textAlign = Paint.Align.CENTER
+                p.typeface = bold; p.textSize = 88f; p.color = textColor
+                canvas.drawText(name.ifBlank { "我的卡面" }, W / 2f, 1850f, p)
+                p.typeface = normal; p.textSize = 46f; p.color = subColor
+                canvas.drawText("KEEP THE MOMENT · CARD FACE STUDIO", W / 2f, 1930f, p)
+                p.textAlign = Paint.Align.LEFT
+            }
         }
-        canvas.drawRoundRect(RectF(rect.left, rect.top + 18f, rect.right, rect.bottom + 24f), 42f, 42f, shadow)
-        val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-        val src = android.graphics.Rect(0, 0, card.width, card.height)
-        canvas.save()
-        val clip = android.graphics.Path().apply { addRoundRect(rect, 36f, 36f, android.graphics.Path.Direction.CW) }
-        canvas.clipPath(clip)
-        canvas.drawBitmap(card, src, rect, cardPaint)
-        canvas.restore()
 
-        // 卡面名称 + 标语
-        p.typeface = bold
-        p.textSize = 46f
-        p.color = Color.parseColor("#0B1B33")
-        canvas.drawText(name.ifBlank { "我的卡面" }, 72f, 1000f, p)
-        p.typeface = normal
-        p.textSize = 28f
-        p.color = Color.parseColor("#65758B")
-        canvas.drawText("用喜欢的画面，点亮每天的第一眼。", 74f, 1052f, p)
-
-        // 分隔线 + 底部信息
+        // 底部品牌与装饰
         val line = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#1A3482FF")
+            color = if (dark) Color.parseColor("#33FFFFFF") else Color.parseColor("#22000000")
             strokeWidth = 2f
         }
-        canvas.drawLine(72f, 1120f, 1008f, 1120f, line)
-        p.textSize = 24f
-        p.color = Color.parseColor("#7A8AA0")
-        canvas.drawText("LSPosed · 小米智能卡卡面", 72f, 1170f, p)
+        canvas.drawLine(120f, 2070f, 2760f, 2070f, line)
+        p.typeface = normal; p.textSize = 36f; p.color = subColor
+        canvas.drawText("LSPosed · 小米智能卡卡面", 120f, 2130f, p)
         p.textAlign = Paint.Align.RIGHT
-        canvas.drawText("DIY NFC CARD FACE", 1008f, 1170f, p)
+        canvas.drawText("DIY NFC CARD FACE", 2760f, 2130f, p)
         p.textAlign = Paint.Align.LEFT
-
-        // 底部小圆点装饰
-        val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = blend(accentColor, Color.WHITE, 0.4f) }
-        for (i in 0..4) canvas.drawCircle(72f + i * 34f, 1240f, 8f, dot)
+        val dot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = accent; alpha = 160 }
+        for (i in 0..4) canvas.drawCircle(120f + i * 52f, 2030f, 11f, dot)
+        card.recycle()
         return out
+    }
+
+    private fun drawCard(canvas: Canvas, card: Bitmap, rect: RectF, accent: Int) {
+        val targetW = rect.width().toInt()
+        val targetH = rect.height().toInt()
+        // 用 Lanczos3 放大，比系统 bilinear 清晰
+        val scaled = runCatching {
+            Resampler.lanczos3(card.toPixelImage(), targetW, targetH, linearLight = false).toBitmap()
+        }.getOrElse {
+            Bitmap.createScaledBitmap(card, targetW, targetH, true)
+        }
+        val shadow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#44000000")
+            maskFilter = android.graphics.BlurMaskFilter(48f, android.graphics.BlurMaskFilter.Blur.NORMAL)
+        }
+        canvas.drawRoundRect(RectF(rect.left, rect.top + 26f, rect.right, rect.bottom + 34f), 48f, 48f, shadow)
+        val clip = Path().apply { addRoundRect(rect, 40f, 40f, Path.Direction.CW) }
+        canvas.save()
+        canvas.clipPath(clip)
+        canvas.drawBitmap(scaled, null, rect, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
+        canvas.restore()
+        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            style = Paint.Style.STROKE; strokeWidth = 4f; color = accent; alpha = 90
+        }
+        canvas.drawRoundRect(rect, 40f, 40f, border)
+        if (scaled !== card) scaled.recycle()
+    }
+
+    private fun canvasText(text: String): String = if (text.length <= 8) text else text.take(8) + "…"
+
+    private fun drawWrapped(canvas: Canvas, text: String, x: Float, y: Float, maxWidth: Float, paint: Paint, maxLines: Int) {
+        var line = StringBuilder()
+        var ty = y
+        var lines = 0
+        for (ch in text) {
+            if (paint.measureText(line.toString() + ch) > maxWidth && line.isNotEmpty()) {
+                canvas.drawText(line.toString(), x, ty, paint)
+                line = StringBuilder(); ty += paint.textSize * 1.15f; lines++
+                if (lines >= maxLines - 1) break
+            }
+            line.append(ch)
+        }
+        if (line.isNotEmpty() && lines < maxLines) canvas.drawText(line.toString(), x, ty, paint)
     }
 
     fun save(context: Context, template: Bitmap): File {
@@ -137,14 +193,7 @@ object CardPoster {
     private fun decode(file: File): Bitmap? = runCatching {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(file.absolutePath, bounds)
-        val sample = maxOf(1, bounds.outWidth / 1200)
+        val sample = maxOf(1, minOf(bounds.outWidth, bounds.outHeight) / 800)
         BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
     }.getOrNull()
-
-    private fun blend(color: Int, with: Int, ratio: Float): Int {
-        val r = (Color.red(color) * (1 - ratio) + Color.red(with) * ratio).toInt()
-        val g = (Color.green(color) * (1 - ratio) + Color.green(with) * ratio).toInt()
-        val b = (Color.blue(color) * (1 - ratio) + Color.blue(with) * ratio).toInt()
-        return Color.rgb(r, g, b)
-    }
 }

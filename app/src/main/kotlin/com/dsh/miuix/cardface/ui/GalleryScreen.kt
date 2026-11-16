@@ -95,7 +95,27 @@ fun GalleryScreen(
     var actionTarget by remember { mutableStateOf<GalleryImage?>(null) }
     var renameTarget by remember { mutableStateOf<GalleryImage?>(null) }
     var poster by remember { mutableStateOf<Bitmap?>(null) }
+    var posterSource by remember { mutableStateOf<GalleryImage?>(null) }
+    var posterStyle by remember { mutableStateOf(com.dsh.miuix.cardface.core.CardPoster.Style.MAGAZINE) }
+    var posterPalette by remember { mutableIntStateOf(0) }
+    var posterLoading by remember { mutableStateOf(false) }
     val accent = MiuixTheme.colorScheme.primary.toArgb()
+
+    fun buildPoster(image: GalleryImage, style: com.dsh.miuix.cardface.core.CardPoster.Style, palette: Int) {
+        posterLoading = true
+        scope.launch {
+            val bmp = withContext(Dispatchers.IO) {
+                runCatching {
+                    com.dsh.miuix.cardface.core.CardPoster.create(
+                        context, image.file, image.name.substringBeforeLast('.'), style, palette,
+                    )
+                }.getOrNull()
+            }
+            poster = bmp
+            posterLoading = false
+            if (bmp == null) model.notify("海报生成失败")
+        }
+    }
     val animationsEnabled = LocalAnimationsEnabled.current
     LaunchedEffect(preview) {
         if (preview != null) lastPreview = preview
@@ -220,16 +240,8 @@ fun GalleryScreen(
                     image = image,
                     onClose = { preview = null },
                     onShare = {
-                        scope.launch {
-                            val bmp = withContext(Dispatchers.IO) {
-                                runCatching {
-                                    com.dsh.miuix.cardface.core.CardPoster.create(
-                                        context, image.file, image.name.substringBeforeLast('.'), accent,
-                                    )
-                                }.getOrNull()
-                            }
-                            if (bmp != null) poster = bmp else model.notify("海报生成失败")
-                        }
+                        posterSource = image
+                        buildPoster(image, posterStyle, posterPalette)
                     },
                 )
             }
@@ -241,13 +253,43 @@ fun GalleryScreen(
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.92f)),
             ) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .fillMaxWidth()
+                        .padding(top = 18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        com.dsh.miuix.cardface.core.CardPoster.Style.entries.forEach { st ->
+                            TextButton(
+                                text = (if (posterStyle == st) "● " else "") + st.label,
+                                onClick = {
+                                    posterStyle = st
+                                    posterSource?.let { buildPoster(it, st, posterPalette) }
+                                },
+                            )
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        com.dsh.miuix.cardface.core.CardPoster.palettes.forEachIndexed { idx, pal ->
+                            TextButton(
+                                text = (if (posterPalette == idx) "● " else "") + pal.label,
+                                onClick = {
+                                    posterPalette = idx
+                                    posterSource?.let { buildPoster(it, posterStyle, idx) }
+                                },
+                            )
+                        }
+                    }
+                    if (posterLoading) Text("生成中…", color = Color.White, style = MiuixTheme.textStyles.footnote1)
+                }
                 Image(
                     bitmap = bmp.asImageBitmap(),
                     contentDescription = "分享海报",
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 18.dp)
-                        .align(Alignment.Center),
+                        .padding(horizontal = 18.dp, vertical = 92.dp),
                     contentScale = ContentScale.Fit,
                 )
                 Row(
