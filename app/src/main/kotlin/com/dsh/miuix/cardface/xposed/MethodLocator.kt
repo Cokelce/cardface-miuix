@@ -487,8 +487,19 @@ class MethodLocator(
                 System.loadLibrary("dexkit")
                 true
             } catch (t: Throwable) {
-                XLog.e("load libdexkit.so failed", t)
-                false
+                // extractNativeLibs / 模块 ClassLoader 路径异常时，按本模块 nativeLibraryDir 绝对路径加载。
+                try {
+                    val app = Class.forName("android.app.ActivityThread")
+                        .getMethod("currentApplication")
+                        .invoke(null) as android.content.Context
+                    val info = app.packageManager.getApplicationInfo("io.github.miambao.cardface", 0)
+                    val lib = java.io.File(info.nativeLibraryDir, "libdexkit.so")
+                    if (lib.isFile) System.load(lib.absolutePath) else throw t
+                    true
+                } catch (t2: Throwable) {
+                    XLog.e("load libdexkit.so failed", t)
+                    false
+                }
             }
             return nativeLoaded
         }
