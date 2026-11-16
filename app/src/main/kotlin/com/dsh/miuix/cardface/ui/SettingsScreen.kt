@@ -207,9 +207,9 @@ fun SettingsScreen(
             }
         }
 
-        // ---------- 卡面显示 ----------
+        // ---------- 桌面与卡面 ----------
         item(key = "display") {
-            SettingsGroup("卡面显示") {
+            SettingsGroup("桌面与卡面") {
                 SwitchPreference(
                     title = "隐藏桌面图标",
                     startAction = { SettingRowIcon(MiuixIcons.Hide) },
@@ -228,7 +228,6 @@ fun SettingsScreen(
                                         com.dsh.miuix.cardface.core.PackageOps.postHiddenEntryNotification(context)
                                         toast("已隐藏桌面图标（通知栏有入口）")
                                     } else {
-                                        // 没真正隐藏成功就不要把设置留在“已隐藏”，否则下次启动自愈会一直重试
                                         prefs.hideIcon = false
                                         com.dsh.miuix.cardface.core.PackageOps.setLauncherVisible(context, true)
                                         toast("隐藏失败：组件状态未更新，已恢复显示")
@@ -243,54 +242,25 @@ fun SettingsScreen(
                         }
                     },
                 )
-                if (walletKind == WalletKind.MIUI) {
-                    RowDivider()
-                    SwitchPreference(
-                        title = "包含小米超级岛卡面",
-                    startAction = { SettingRowIcon(MiuixIcons.Show) },
-                        summary = "关闭后不拦截超级岛里的卡面",
-                        checked = prefs.superIsland,
-                        onCheckedChange = { prefs.superIsland = it },
-                    )
-                }
-                RowDivider()
-                SwitchPreference(
-                    title = "显示全部卡面",
-                    startAction = { SettingRowIcon(MiuixIcons.Image) },
-                    summary = "关闭时会过滤小图（w270h480 / logo / Mibi）",
-                    checked = prefs.showAllCards,
-                    onCheckedChange = { prefs.showAllCards = it },
-                )
-                RowDivider()
-                SwitchPreference(
-                    title = "显示卡面库入口",
-                    startAction = { SettingRowIcon(MiuixIcons.Store) },
-                    summary = "在线卡面库（Hibank 图片源），关闭后首页/编辑页隐藏入口",
-                    checked = prefs.catalogEnabled,
-                    onCheckedChange = { prefs.catalogEnabled = it },
-                )
-                RowDivider()
-                SwitchPreference(
-                    title = "省流量模式",
-                    startAction = { SettingRowIcon(MiuixIcons.CloudFill) },
-                    summary = "Wi-Fi 下加载原图；移动网络用压缩缩略图，省流量但稍糊",
-                    checked = prefs.dataSaver,
-                    onCheckedChange = { prefs.dataSaver = it },
-                )
-                RowDivider()
-                SwitchPreference(
-                    title = "保存到图库前命名",
-                    startAction = { SettingRowIcon(MiuixIcons.Rename) },
-                    summary = "开启后，从相册选图保存到图库时会先输入名称；关闭则自动命名",
-                    checked = prefs.askNameOnGallerySave,
-                    onCheckedChange = { prefs.askNameOnGallerySave = it },
-                )
                 RowDivider()
                 ArrowPreference(
                     title = "主界面卡面黑名单",
                     startAction = { SettingRowIcon(MiuixIcons.Blocklist) },
                     summary = "已加入 ${prefs.blacklistedUrls().size} 张",
                     onClick = onOpenBlacklist,
+                )
+            }
+        }
+
+        // ---------- 卡面库 ----------
+        item(key = "catalog") {
+            SettingsGroup("卡面库") {
+                SwitchPreference(
+                    title = "省流量模式",
+                    startAction = { SettingRowIcon(MiuixIcons.CloudFill) },
+                    summary = "Wi-Fi 下加载原图；移动网络用压缩缩略图，省流量但稍糊",
+                    checked = prefs.dataSaver,
+                    onCheckedChange = { prefs.dataSaver = it },
                 )
             }
         }
