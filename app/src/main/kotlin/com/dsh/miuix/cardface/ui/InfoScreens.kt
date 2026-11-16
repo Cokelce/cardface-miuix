@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -1088,15 +1089,22 @@ fun ChangelogScreen(
                 } else {
                     groups.forEachIndexed { index, group ->
                         if (index > 0) {
-                            Spacer(Modifier.height(10.dp))
-                            HorizontalDivider(color = MiuixTheme.colorScheme.dividerLine)
-                            Spacer(Modifier.height(10.dp))
+                            Spacer(Modifier.height(14.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(
+                                        MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.45f),
+                                    ),
+                            )
+                            Spacer(Modifier.height(14.dp))
                         } else {
-                            Spacer(Modifier.height(10.dp))
+                            Spacer(Modifier.height(12.dp))
                         }
                         Text(
                             text = group.title,
-                            style = MiuixTheme.textStyles.footnote1,
+                            style = MiuixTheme.textStyles.body2,
                             fontWeight = FontWeight.Bold,
                             color = MiuixTheme.colorScheme.primary,
                         )
