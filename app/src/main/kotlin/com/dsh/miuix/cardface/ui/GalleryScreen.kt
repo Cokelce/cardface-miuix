@@ -57,6 +57,9 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
@@ -83,6 +86,8 @@ fun GalleryScreen(
     var preview by remember { mutableStateOf<GalleryImage?>(null) }
     var lastPreview by remember { mutableStateOf<GalleryImage?>(null) }
     var deleteTarget by remember { mutableStateOf<GalleryImage?>(null) }
+    var actionTarget by remember { mutableStateOf<GalleryImage?>(null) }
+    var renameTarget by remember { mutableStateOf<GalleryImage?>(null) }
     val animationsEnabled = LocalAnimationsEnabled.current
     LaunchedEffect(preview) {
         if (preview != null) lastPreview = preview
@@ -181,7 +186,7 @@ fun GalleryScreen(
                         modifier = if (animationsEnabled) Modifier.animateItem() else Modifier,
                         image = image,
                         onClick = { preview = image },
-                        onLongPress = { deleteTarget = image },
+                        onLongPress = { actionTarget = image },
                     )
                 }
             }
@@ -205,6 +210,101 @@ fun GalleryScreen(
         ) {
             lastPreview?.let { image ->
                 GalleryPreview(image = image, onClose = { preview = null })
+            }
+        }
+    }
+
+    val acting = actionTarget
+    if (acting != null) {
+        OverlayDialog(
+            show = true,
+            title = "图片操作",
+            summary = acting.name,
+            onDismissRequest = { actionTarget = null },
+        ) {
+            TextButton(
+                text = "重命名",
+                onClick = {
+                    renameTarget = acting
+                    actionTarget = null
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            TextButton(
+                text = "删除",
+                onClick = {
+                    deleteTarget = acting
+                    actionTarget = null
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.textButtonColors(
+                    color = MiuixTheme.colorScheme.error,
+                    textColor = MiuixTheme.colorScheme.onError,
+                ),
+            )
+            TextButton(
+                text = "取消",
+                onClick = { actionTarget = null },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+
+    val renaming = renameTarget
+    if (renaming != null) {
+        var input by remember(renaming.name) {
+            mutableStateOf(renaming.name.removeSuffix(".png"))
+        }
+        OverlayDialog(
+            show = true,
+            title = "重命名图片",
+            summary = "改的是图库里的文件名；已经应用的卡面会同步更新。",
+            onDismissRequest = { renameTarget = null },
+        ) {
+            TextField(
+                value = input,
+                onValueChange = { input = it.take(60) },
+                label = "图片名称",
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(
+                    text = "取消",
+                    onClick = { renameTarget = null },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = "保存",
+                    onClick = {
+                        val oldName = renaming.name
+                        val newBase = input
+                        renameTarget = null
+                        scope.launch {
+                            runCatching {
+                                val newName = model.store.rename(oldName, newBase)
+                                model.prefs.allCardUrls().forEach { url ->
+                                    if (model.prefs.replacementFor(url) == oldName) {
+                                        model.prefs.setReplacement(url, newName)
+                                    }
+                                }
+                                com.dsh.miuix.cardface.core.CardSync.writeMapSnapshot(
+                                    context,
+                                    model.prefs,
+                                )
+                                model.bumpStore()
+                                tick++
+                                newName
+                            }.onSuccess {
+                                model.notify("已重命名为 $it")
+                            }.onFailure {
+                                model.notify("重命名失败：${it.message}")
+                            }
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }

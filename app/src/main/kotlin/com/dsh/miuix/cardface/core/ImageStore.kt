@@ -62,6 +62,20 @@ class ImageStore(context: Context) {
 
     fun load(name: String): Bitmap? = find(name)?.let { BitmapFactory.decodeFile(it.absolutePath) }
 
+    /** 重命名图库图片（同时改 applied 里的副本）；返回新文件名。 */
+    fun rename(oldName: String, newName: String): String {
+        val old = File(dir, oldName)
+        require(old.isFile) { "图片不存在" }
+        var base = newName.trim().replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        require(base.isNotBlank()) { "名称不能为空" }
+        if (!base.endsWith(".png", true)) base += ".png"
+        val name = uniqueName(base)
+        val target = File(dir, name)
+        require(old.renameTo(target)) { "重命名失败" }
+        File(appliedDir, oldName).takeIf { it.isFile }?.renameTo(File(appliedDir, name))
+        return name
+    }
+
     fun delete(name: String): Boolean {
         var deleted = false
         File(dir, name).takeIf { it.exists() }?.let { deleted = it.delete() || deleted }
