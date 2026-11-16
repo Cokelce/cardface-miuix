@@ -1086,8 +1086,14 @@ fun ChangelogScreen(
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 } else {
-                    groups.forEach { group ->
-                        Spacer(Modifier.height(10.dp))
+                    groups.forEachIndexed { index, group ->
+                        if (index > 0) {
+                            Spacer(Modifier.height(10.dp))
+                            HorizontalDivider(color = MiuixTheme.colorScheme.dividerLine)
+                            Spacer(Modifier.height(10.dp))
+                        } else {
+                            Spacer(Modifier.height(10.dp))
+                        }
                         Text(
                             text = group.title,
                             style = MiuixTheme.textStyles.footnote1,
