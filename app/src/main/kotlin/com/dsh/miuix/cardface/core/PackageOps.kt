@@ -112,8 +112,27 @@ object PackageOps {
 
     // ---------- 桌面图标 ----------
 
-    private fun launcherAlias(context: Context): ComponentName =
-        ComponentName(context.packageName, context.packageName + LAUNCHER_ALIAS_SUFFIX)
+    private fun launcherAlias(context: Context): ComponentName {
+        // applicationId 与 AndroidManifest 的 namespace 可能不同（本项目就是），
+        // 不能只用 packageName 拼组件名；优先从已声明的 activity-alias 里找。
+        val pm = context.packageManager
+        return try {
+            @Suppress("DEPRECATION")
+            val flags = PackageManager.GET_ACTIVITIES or PackageManager.MATCH_DISABLED_COMPONENTS
+            val info = pm.getPackageInfo(context.packageName, flags)
+            val alias = info.activities?.firstOrNull { activity ->
+                activity.name.endsWith(LAUNCHER_ALIAS_SUFFIX) &&
+                    activity.targetActivity?.endsWith(".MainActivity") == true
+            }
+            if (alias != null) {
+                ComponentName(context.packageName, alias.name)
+            } else {
+                ComponentName(context.packageName, context.packageName + LAUNCHER_ALIAS_SUFFIX)
+            }
+        } catch (_: Throwable) {
+            ComponentName(context.packageName, context.packageName + LAUNCHER_ALIAS_SUFFIX)
+        }
+    }
 
     /** 显示 / 隐藏桌面图标（只影响 activity-alias，不影响 LSPosed 的模块设置入口）。 */
     fun setLauncherVisible(context: Context, visible: Boolean): Boolean = try {

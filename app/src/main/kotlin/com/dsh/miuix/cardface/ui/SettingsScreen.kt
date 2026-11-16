@@ -229,7 +229,10 @@ fun SettingsScreen(
                                         com.dsh.miuix.cardface.core.PackageOps.postHiddenEntryNotification(context)
                                         toast("已隐藏桌面图标（通知栏有入口）")
                                     } else {
-                                        toast("隐藏失败：系统拒绝修改组件状态")
+                                        // 没真正隐藏成功就不要把设置留在“已隐藏”，否则下次启动自愈会一直重试
+                                        prefs.hideIcon = false
+                                        com.dsh.miuix.cardface.core.PackageOps.setLauncherVisible(context, true)
+                                        toast("隐藏失败：组件状态未更新，已恢复显示")
                                     }
                                 },
                             )
