@@ -14,6 +14,10 @@ import androidx.compose.ui.graphics.vector.PathData
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -593,25 +597,43 @@ fun CatalogScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(14.dp))
             val jumpList = groups.keys.filter {
                 ipQuery.isBlank() || it.contains(ipQuery.trim(), ignoreCase = true)
             }
-            LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
-                lazyItems(jumpList, key = { it }) { name ->
-                    val target = groupAnchors[name]
-                    val count = groups[name]?.size ?: 0
-                    TextButton(
-                        text = "$name  ($count)",
-                        onClick = {
-                            if (target != null) {
-                                showIpJump = false
-                                scope.launch { gridState.animateScrollToItem(target) }
-                            }
-                        },
-                        enabled = target != null,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 430.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    jumpList.forEach { name ->
+                        val target = groupAnchors[name]
+                        Card(
+                            cornerRadius = 14.dp,
+                            insideMargin = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                            onClick = {
+                                if (target != null) {
+                                    showIpJump = false
+                                    scope.launch { gridState.animateScrollToItem(target) }
+                                }
+                            },
+                        ) {
+                            Text(
+                                text = name,
+                                style = MiuixTheme.textStyles.footnote1,
+                                color = MiuixTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.widthIn(max = 220.dp),
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -624,24 +646,39 @@ fun CatalogScreen(
             summary = "点字母跳到对应分组（灰色表示没有该首字母的分组）",
             onDismissRequest = { showIndex = false },
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                PinyinSort.LETTERS.chunked(6).forEach { rowLetters ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                PinyinSort.LETTERS.forEach { letter ->
+                    val target = anchors[letter]
+                    val enabled = target != null
+                    Card(
+                        modifier = Modifier.size(44.dp),
+                        cornerRadius = 12.dp,
+                        insideMargin = PaddingValues(0.dp),
+                        onClick = {
+                            if (target != null) {
+                                showIndex = false
+                                scope.launch { gridState.animateScrollToItem(target) }
+                            }
+                        },
+                        colors = top.yukonga.miuix.kmp.basic.CardDefaults.defaultColors(
+                            color = MiuixTheme.colorScheme.secondaryContainer.copy(
+                                alpha = if (enabled) 1f else 0.4f,
+                            ),
+                        ),
                     ) {
-                        rowLetters.forEach { letter ->
-                            val target = anchors[letter]
-                            TextButton(
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
                                 text = letter.toString(),
-                                onClick = {
-                                    if (target != null) {
-                                        showIndex = false
-                                        scope.launch { gridState.animateScrollToItem(target) }
-                                    }
+                                style = MiuixTheme.textStyles.body2,
+                                color = if (enabled) {
+                                    MiuixTheme.colorScheme.onSurface
+                                } else {
+                                    MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.4f)
                                 },
-                                enabled = target != null,
-                                modifier = Modifier.weight(1f),
                             )
                         }
                     }
