@@ -19,7 +19,7 @@ object SuperResolution {
 
     private const val PAD = 36
     private const val MODEL_DIR = "models-se"
-    private const val MODEL_NAME = "up2x-conservative"
+    private const val MODEL_NAME = "up2x-no-denoise"
     private const val MAX_SIDE = 1600
 
     @Volatile private var modelExtracted = false
