@@ -226,10 +226,6 @@ object CardPoster {
         canvas.save(); canvas.clipPath(clip)
         canvas.drawBitmap(scaled, null, rect, Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG))
         canvas.restore()
-        val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeWidth = 4f; color = accent; alpha = 80
-        }
-        canvas.drawRoundRect(rect, 34f, 34f, border)
         if (scaled !== card) scaled.recycle()
     }
 
