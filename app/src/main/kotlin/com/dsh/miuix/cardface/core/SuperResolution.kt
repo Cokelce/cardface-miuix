@@ -32,6 +32,8 @@ object SuperResolution {
 
     /** 源裁剪尺寸低于目标卡面尺寸时，先 2x 超分；失败返回 null（调用方直接降采样兜底）。 */
     fun upscaleIfNeeded(context: Context, src: Bitmap, targetW: Int, targetH: Int): Bitmap? {
+        // JNI 版本尚未通过稳定性验证，先关闭，避免保存时原生崩溃。
+        if (true) return null
         if (src.width >= targetW && src.height >= targetH) return null
         if (src.width <= 0 || src.height <= 0) return null
         if (src.width > MAX_SIDE || src.height > MAX_SIDE) return null
@@ -39,50 +41,19 @@ object SuperResolution {
     }
 
     private fun upscale2x(context: Context, src: Bitmap): Bitmap? {
-        val nativeDir = File(context.applicationInfo.nativeLibraryDir)
-        val exe = File(nativeDir, "librealcugan-ncnn.so")
-        if (!exe.exists()) return null
         val modelDir = ensureModel(context) ?: return null
-        val work = File(context.cacheDir, "sr").apply { mkdirs() }
-
+        val param = File(modelDir, "$MODEL_NAME.param")
+        val bin = File(modelDir, "$MODEL_NAME.bin")
         val padded = pad(src, PAD)
-        val input = File(work, "in.png")
-        val output = File(work, "out.png")
-        output.delete()
-        FileOutputStream(input).use { padded.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val up = RealCuganJni.upscale2x(param.absolutePath, bin.absolutePath, padded, 4)
         padded.recycle()
-
-        val cmd = listOf(
-            "/system/bin/linker64", exe.absolutePath,
-            "-i", input.absolutePath,
-            "-o", output.absolutePath,
-            "-s", "2",
-            "-n", "0",
-            "-m", modelDir.absolutePath,
-            "-g", "-1",
-            "-j", "1:2:2",
-        )
-        val proc = ProcessBuilder(cmd)
-            .redirectErrorStream(true)
-            .apply { environment()["LD_LIBRARY_PATH"] = nativeDir.absolutePath }
-            .start()
-        val finished = proc.waitFor(90, java.util.concurrent.TimeUnit.SECONDS)
-        if (!finished) {
-            proc.destroyForcibly()
-            return null
-        }
-        if (proc.exitValue() != 0 || !output.exists()) return null
-
-        val decoded = BitmapFactory.decodeFile(output.absolutePath) ?: return null
-        val cropX = PAD * 2
-        val cropY = PAD * 2
-        val w = decoded.width - cropX * 2
-        val h = decoded.height - cropY * 2
-        if (w <= 0 || h <= 0) return decoded
-        val cropped = Bitmap.createBitmap(decoded, cropX, cropY, w, h)
-        if (cropped !== decoded) decoded.recycle()
-        input.delete()
-        output.delete()
+        if (up == null) return null
+        val crop = PAD * 2
+        val w = up.width - crop * 2
+        val h = up.height - crop * 2
+        if (w <= 0 || h <= 0) return up
+        val cropped = Bitmap.createBitmap(up, crop, crop, w, h)
+        if (cropped !== up) up.recycle()
         return cropped
     }
 
