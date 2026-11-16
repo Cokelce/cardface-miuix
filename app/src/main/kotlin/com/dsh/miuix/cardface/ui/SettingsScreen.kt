@@ -28,13 +28,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.ui.graphics.RectangleShape
-import top.yukonga.miuix.kmp.blur.ProgressiveBlur
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
-import top.yukonga.miuix.kmp.shader.isRuntimeShaderSupported
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -123,14 +116,8 @@ fun SettingsScreen(
         scope.launch { model.notify(message) }
     }
 
-    val settingsScroll = rememberLazyListState()
-    val settingsBackdrop = if (isRuntimeShaderSupported()) rememberLayerBackdrop() else null
-    Box(Modifier.fillMaxWidth()) {
-        LazyColumn(
-        state = settingsScroll,
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(if (settingsBackdrop != null) Modifier.layerBackdrop(settingsBackdrop) else Modifier),
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(
             top = innerPadding.calculateTopPadding(),
             bottom = innerPadding.calculateBottomPadding() + 28.dp,
@@ -516,21 +503,6 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 24.dp, vertical = 16.dp),
-            )
-        }
-    }
-        if (settingsBackdrop != null && settingsScroll.firstVisibleItemIndex > 0) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .fillMaxWidth()
-                    .height(56.dp)
-                    .progressiveTextureBlur(
-                        backdrop = settingsBackdrop,
-                        shape = RectangleShape,
-                        blurRadius = 18f,
-                        gradient = ProgressiveBlur.Top.copy(startFraction = 0f, endFraction = 1f),
-                    ),
             )
         }
     }
