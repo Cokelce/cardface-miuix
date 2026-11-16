@@ -92,6 +92,16 @@ class AppPrefs(context: Context) {
         get() = settings.getBoolean("ask_name_gallery", false)
         set(v) = settings.edit().putBoolean("ask_name_gallery", v).apply().also { touch() }
 
+    /** 省流量模式：Wi-Fi 加载原图，移动网络用压缩缩略图。 */
+    var dataSaver: Boolean
+        get() = settings.getBoolean("data_saver", true)
+        set(v) = settings.edit().putBoolean("data_saver", v).apply().also { touch() }
+
+    /** 卡面库首次打开时是否已经提示过省流量开关。 */
+    var dataSaverPromptShown: Boolean
+        get() = settings.getBoolean("data_saver_prompt_v1", false)
+        set(v) = settings.edit().putBoolean("data_saver_prompt_v1", v).apply()
+
     /** 是否在首页/编辑页显示「卡面库」入口（第三方在线图片源，可关闭）。 */
     var catalogEnabled: Boolean
         get() = settings.getBoolean("catalog_enabled", true)

@@ -638,3 +638,27 @@ fun SukiFloatingBottomBar(
         }
     }
 }
+
+/** 监听当前网络是否为 Wi-Fi；网络切换时自动重组。 */
+@Composable
+fun rememberIsWifi(): Boolean {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var wifi by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(com.dsh.miuix.cardface.core.NetworkStatus.isWifi(context)) }
+    androidx.compose.runtime.DisposableEffect(context) {
+        val cm = context.getSystemService(android.net.ConnectivityManager::class.java)
+        val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+            override fun onCapabilitiesChanged(
+                network: android.net.Network,
+                capabilities: android.net.NetworkCapabilities,
+            ) {
+                wifi = com.dsh.miuix.cardface.core.NetworkStatus.isWifi(context)
+            }
+            override fun onLost(network: android.net.Network) {
+                wifi = com.dsh.miuix.cardface.core.NetworkStatus.isWifi(context)
+            }
+        }
+        try { cm?.registerDefaultNetworkCallback(callback) } catch (_: Throwable) {}
+        onDispose { try { cm?.unregisterNetworkCallback(callback) } catch (_: Throwable) {} }
+    }
+    return wifi
+}

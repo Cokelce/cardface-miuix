@@ -51,6 +51,7 @@ import top.yukonga.miuix.kmp.icon.extended.Background
 import top.yukonga.miuix.kmp.icon.extended.BankCards
 import top.yukonga.miuix.kmp.icon.extended.Blocklist
 import top.yukonga.miuix.kmp.icon.extended.Community
+import top.yukonga.miuix.kmp.icon.extended.CloudFill
 import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Help
@@ -266,6 +267,14 @@ fun SettingsScreen(
                     summary = "在线卡面库（Hibank 图片源），关闭后首页/编辑页隐藏入口",
                     checked = prefs.catalogEnabled,
                     onCheckedChange = { prefs.catalogEnabled = it },
+                )
+                RowDivider()
+                SwitchPreference(
+                    title = "省流量模式",
+                    startAction = { SettingRowIcon(MiuixIcons.CloudFill) },
+                    summary = "Wi-Fi 下加载原图；移动网络用压缩缩略图，省流量但稍糊",
+                    checked = prefs.dataSaver,
+                    onCheckedChange = { prefs.dataSaver = it },
                 )
                 RowDivider()
                 SwitchPreference(

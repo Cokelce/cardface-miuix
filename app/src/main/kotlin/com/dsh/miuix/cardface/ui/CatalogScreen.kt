@@ -135,6 +135,9 @@ fun CatalogScreen(
     var loadMoreJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var showFilter by rememberSaveable { mutableStateOf(false) }
     var showIndex by remember { mutableStateOf(false) }
+    var showDataSaverPrompt by remember { mutableStateOf(!model.prefs.dataSaverPromptShown) }
+    val isWifi = rememberIsWifi()
+    val useThumbnails = model.prefs.dataSaver && !isWifi
     var showIpJump by remember { mutableStateOf(false) }
     var ipQuery by remember { mutableStateOf("") }
     val collapsedGroups = remember { mutableStateListOf<String>() }
@@ -507,6 +510,7 @@ fun CatalogScreen(
                         CatalogTile(
                             item = item,
                             localImage = repo.localImage(item),
+                            useThumbnail = useThumbnails,
                             favorite = repo.isFavorite(item),
                             onClick = { selected = item },
                             onFavorite = {
@@ -618,6 +622,45 @@ fun CatalogScreen(
                         modifier = Modifier.size(26.dp),
                     )
                 }
+            }
+        }
+    }
+
+    if (showDataSaverPrompt) {
+        OverlayDialog(
+            show = true,
+            title = "省流量模式",
+            summary = "Wi-Fi 下加载原图；用移动网络时自动换成压缩缩略图，省流量但稍糊。",
+            onDismissRequest = {
+                model.prefs.dataSaverPromptShown = true
+                showDataSaverPrompt = false
+            },
+        ) {
+            Text(
+                text = "建议开启。以后可以在 设置 → 卡面显示 里随时切换。",
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(
+                    text = "始终原图",
+                    onClick = {
+                        model.prefs.dataSaver = false
+                        model.prefs.dataSaverPromptShown = true
+                        showDataSaverPrompt = false
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = "开启省流量",
+                    onClick = {
+                        model.prefs.dataSaver = true
+                        model.prefs.dataSaverPromptShown = true
+                        showDataSaverPrompt = false
+                    },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
@@ -743,7 +786,8 @@ fun CatalogScreen(
         ) {
             AppAsyncImage(
                 model = repo.localImage(current)?.let { Uri.fromFile(it).toString() }
-                    ?: current.imageUrl,
+                    ?: if (useThumbnails) HibankCatalogSource.previewUrl(current.imageUrl) else current.imageUrl,
+                fallbackModel = current.imageUrl,
                 contentDescription = current.title,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -937,6 +981,7 @@ private fun CatalogPillRow(
 private fun CatalogTile(
     item: CatalogItem,
     localImage: java.io.File?,
+    useThumbnail: Boolean,
     favorite: Boolean,
     onClick: () -> Unit,
     onFavorite: () -> Unit,
@@ -955,7 +1000,8 @@ private fun CatalogTile(
         ) {
             AppAsyncImage(
                 model = localImage?.let { Uri.fromFile(it).toString() }
-                    ?: item.imageUrl,
+                    ?: if (useThumbnail) HibankCatalogSource.thumbnailUrl(item.imageUrl) else item.imageUrl,
+                fallbackModel = item.imageUrl,
                 contentDescription = item.title,
                 modifier = Modifier.fillMaxSize(),
                 backgroundBrush = cardThumbnailGradient(),
