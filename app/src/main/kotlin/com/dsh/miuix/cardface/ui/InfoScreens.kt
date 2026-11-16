@@ -610,6 +610,27 @@ fun BlacklistScreen(model: AppModel, innerPadding: PaddingValues, onBack: () -> 
                     insideMargin = PaddingValues(16.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        val storeUri = item.replacement?.let {
+                            runCatching { model.store.fileUri(it) }.getOrDefault("")
+                        }
+                        val imageModel = when {
+                            item.replacement.isNullOrBlank() -> item.url
+                            com.dsh.miuix.cardface.ui.DeviceBridge.isRemote(item.replacement) -> item.replacement
+                            !storeUri.isNullOrBlank() -> storeUri
+                            else -> item.url
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(width = 96.dp, height = 60.dp)
+                                .clip(RoundedCornerShape(10.dp)),
+                        ) {
+                            AppAsyncImage(
+                                model = imageModel,
+                                contentDescription = item.displayName,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        Spacer(Modifier.size(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = item.displayName,
