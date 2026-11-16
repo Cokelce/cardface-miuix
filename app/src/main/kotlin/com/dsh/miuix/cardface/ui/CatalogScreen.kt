@@ -10,6 +10,9 @@ import top.yukonga.miuix.kmp.icon.extended.ExpandMore
 import androidx.compose.foundation.clickable
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.PathData
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -508,7 +511,7 @@ fun CatalogScreen(
                 },
             ) {
                 Icon(
-                    imageVector = MiuixIcons.ExpandLess,
+                    imageVector = BackToTopArrow,
                     contentDescription = "回到顶部",
                     tint = MiuixTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp),
@@ -791,3 +794,27 @@ private fun CatalogTile(
         }
     }
 }
+
+
+/** 回到顶部的上箭头（Miuix 图标集里没有 ArrowUp，这里用 Material 的 ArrowUpward 路径自绘）。 */
+private val BackToTopArrow: ImageVector = ImageVector.Builder(
+    name = "BackToTopArrow",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f,
+).addPath(
+    pathData = PathData {
+        moveTo(4f, 12f)
+        lineTo(5.41f, 13.41f)
+        lineTo(11f, 7.83f)
+        lineTo(11f, 20f)
+        lineTo(13f, 20f)
+        lineTo(13f, 7.83f)
+        lineTo(18.58f, 13.42f)
+        lineTo(20f, 12f)
+        lineTo(12f, 4f)
+        close()
+    },
+    fill = SolidColor(Color.Black),
+).build()
