@@ -160,6 +160,11 @@ object CardPoster {
         palette: Palette,
         dark: Boolean,
     ) {
+        if (dark) {
+            // 墨黑：纯色，不要渐变和光带
+            canvas.drawColor(Color.parseColor(palette.bgFrom))
+            return
+        }
         val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = LinearGradient(
                 0f, 0f, W.toFloat(), H.toFloat(),
