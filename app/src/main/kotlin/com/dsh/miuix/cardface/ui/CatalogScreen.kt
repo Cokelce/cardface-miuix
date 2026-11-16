@@ -60,6 +60,7 @@ import com.dsh.miuix.cardface.core.catalog.CatalogItem
 import com.dsh.miuix.cardface.core.catalog.CatalogPage
 import com.dsh.miuix.cardface.core.catalog.CatalogRepository
 import com.dsh.miuix.cardface.core.catalog.HibankCatalogSource
+import com.dsh.miuix.cardface.core.catalog.PinyinSort
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -125,6 +126,7 @@ fun CatalogScreen(
     var generation by remember { mutableIntStateOf(0) }
     var loadMoreJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var showFilter by rememberSaveable { mutableStateOf(false) }
+    var showIndex by remember { mutableStateOf(false) }
     val collapsedGroups = remember { mutableStateListOf<String>() }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -169,7 +171,7 @@ fun CatalogScreen(
         if (!loading && error == null && browseItems.isEmpty()) index += 1
         val map = LinkedHashMap<Char, Int>()
         groups.forEach { (name, list) ->
-            val letter = LetterIndex.initial(name)
+            val letter = PinyinSort.initial(name)
             if (!map.containsKey(letter)) map[letter] = index
             index += 1 + if (name in collapsedGroups) 0 else list.size
         }
@@ -386,11 +388,18 @@ fun CatalogScreen(
                 }
 
                 item(span = { GridItemSpan(maxLineSpan) }, key = "status") {
-                    CatalogStatusLine(
-                        loading = loading,
-                        total = pageInfo?.total ?: 0,
-                        cached = pageInfo?.cached == true,
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) {
+                            CatalogStatusLine(
+                                loading = loading,
+                                total = pageInfo?.total ?: 0,
+                                cached = pageInfo?.cached == true,
+                            )
+                        }
+                        if (mode == 0 && groups.size > 8) {
+                            TextButton(text = "A-Z", onClick = { showIndex = true })
+                        }
+                    }
                 }
             } else {
                 item(span = { GridItemSpan(maxLineSpan) }, key = "status") {
@@ -511,40 +520,6 @@ fun CatalogScreen(
             }
         }
 
-        // 通讯录式 A-Z 侧边栏：点字母跳到对应分组
-        if (mode == 0 && groups.size > 8) {
-            Column(
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 2.dp)
-                    .background(
-                        MiuixTheme.colorScheme.surface.copy(alpha = 0.66f),
-                        RoundedCornerShape(12.dp),
-                    )
-                    .padding(vertical = 6.dp, horizontal = 3.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                LetterIndex.LETTERS.forEach { letter ->
-                    val target = anchors[letter]
-                    val active = letter == currentLetter && target != null
-                    Text(
-                        text = letter.toString(),
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = when {
-                            active -> MiuixTheme.colorScheme.primary
-                            target != null -> MiuixTheme.colorScheme.onSurfaceVariantSummary
-                            else -> MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.35f)
-                        },
-                        modifier = Modifier
-                            .clickable(enabled = target != null) {
-                                target?.let { scope.launch { gridState.animateScrollToItem(it) } }
-                            }
-                            .padding(horizontal = 4.dp, vertical = 1.dp),
-                    )
-                }
-            }
-        }
-
         // 回到顶部：滚下去之后一键跳回
         if (gridState.firstVisibleItemIndex > 3) {
             Card(
@@ -553,9 +528,10 @@ fun CatalogScreen(
                     .padding(
                         end = 20.dp,
                         bottom = innerPadding.calculateBottomPadding() + 20.dp,
-                    ),
-                cornerRadius = 22.dp,
-                insideMargin = PaddingValues(10.dp),
+                    )
+                    .size(58.dp),
+                cornerRadius = 29.dp,
+                insideMargin = PaddingValues(14.dp),
                 onClick = {
                     scope.launch { gridState.animateScrollToItem(0) }
                 },
@@ -564,8 +540,41 @@ fun CatalogScreen(
                     imageVector = BackToTopArrow,
                     contentDescription = "回到顶部",
                     tint = MiuixTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp),
+                    modifier = Modifier.size(30.dp),
                 )
+            }
+        }
+    }
+
+    if (showIndex) {
+        OverlayDialog(
+            show = true,
+            title = "按首字母查找",
+            summary = "点字母跳到对应分组（灰色表示没有该首字母的分组）",
+            onDismissRequest = { showIndex = false },
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                PinyinSort.LETTERS.chunked(6).forEach { rowLetters ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        rowLetters.forEach { letter ->
+                            val target = anchors[letter]
+                            TextButton(
+                                text = letter.toString(),
+                                onClick = {
+                                    if (target != null) {
+                                        showIndex = false
+                                        scope.launch { gridState.animateScrollToItem(target) }
+                                    }
+                                },
+                                enabled = target != null,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
+                }
             }
         }
     }

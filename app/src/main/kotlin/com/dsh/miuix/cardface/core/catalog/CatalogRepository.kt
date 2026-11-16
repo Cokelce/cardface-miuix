@@ -328,7 +328,10 @@ class CatalogRepository(context: Context) {
             }
         }
         list = list.sortedWith(
-            compareBy({ it.groupName.ifBlank { it.subtitle } }, { it.title }),
+            compareBy(
+                { PinyinSort.sortKey(it.groupName.ifBlank { it.subtitle }) },
+                { it.title },
+            ),
         )
         val pages = maxOf(1, (list.size + pageSize - 1) / pageSize)
         val p = page.coerceIn(1, pages)
