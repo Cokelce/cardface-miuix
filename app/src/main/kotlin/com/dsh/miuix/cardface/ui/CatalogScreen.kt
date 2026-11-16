@@ -27,6 +27,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items as lazyItems
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -127,6 +130,8 @@ fun CatalogScreen(
     var loadMoreJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var showFilter by rememberSaveable { mutableStateOf(false) }
     var showIndex by remember { mutableStateOf(false) }
+    var showIpJump by remember { mutableStateOf(false) }
+    var ipQuery by remember { mutableStateOf("") }
     val collapsedGroups = remember { mutableStateListOf<String>() }
     val keyboard = LocalSoftwareKeyboardController.current
 
@@ -164,19 +169,24 @@ fun CatalogScreen(
     val groups = browseItems.groupBy {
         it.groupName.ifBlank { it.subtitle }.ifBlank { "其他" }
     }
-    val anchors: Map<Char, Int> = remember(groups, collapsedGroups.toList(), mode, error, loading) {
-        if (mode != 0) return@remember emptyMap()
-        var index = 5 // header / 模式 / 分类 / 搜索 / 状态
-        if (error != null) index += 1
-        if (!loading && error == null && browseItems.isEmpty()) index += 1
-        val map = LinkedHashMap<Char, Int>()
-        groups.forEach { (name, list) ->
-            val letter = PinyinSort.initial(name)
-            if (!map.containsKey(letter)) map[letter] = index
-            index += 1 + if (name in collapsedGroups) 0 else list.size
+    val indexData: Pair<Map<Char, Int>, Map<String, Int>> =
+        remember(groups, collapsedGroups.toList(), mode, error, loading) {
+            if (mode != 0) return@remember emptyMap<Char, Int>() to emptyMap()
+            var index = 5 // header / 模式 / 分类 / 搜索 / 状态
+            if (error != null) index += 1
+            if (!loading && error == null && browseItems.isEmpty()) index += 1
+            val letters = LinkedHashMap<Char, Int>()
+            val perGroup = LinkedHashMap<String, Int>()
+            groups.forEach { (name, list) ->
+                val letter = PinyinSort.initial(name)
+                if (!letters.containsKey(letter)) letters[letter] = index
+                perGroup[name] = index
+                index += 1 + if (name in collapsedGroups) 0 else list.size
+            }
+            letters to perGroup
         }
-        map
-    }
+    val anchors = indexData.first
+    val groupAnchors = indexData.second
     val currentLetter = anchors.entries.lastOrNull {
         it.value <= gridState.firstVisibleItemIndex
     }?.key
@@ -398,6 +408,7 @@ fun CatalogScreen(
                         }
                         if (mode == 0 && groups.size > 8) {
                             TextButton(text = "A-Z", onClick = { showIndex = true })
+                            TextButton(text = "IP 跳转", onClick = { showIpJump = true })
                         }
                     }
                 }
@@ -520,28 +531,88 @@ fun CatalogScreen(
             }
         }
 
-        // 回到顶部：滚下去之后一键跳回
-        if (gridState.firstVisibleItemIndex > 3) {
-            Card(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(
-                        end = 20.dp,
-                        bottom = innerPadding.calculateBottomPadding() + 20.dp,
+        // 右下角悬浮按钮：A 打开字母索引，上箭头回到顶部
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(
+                    end = 20.dp,
+                    bottom = innerPadding.calculateBottomPadding() + 20.dp,
+                ),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            if (mode == 0 && groups.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.size(58.dp),
+                    cornerRadius = 29.dp,
+                    insideMargin = PaddingValues(14.dp),
+                    onClick = { showIndex = true },
+                ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "A",
+                            style = MiuixTheme.textStyles.headline2,
+                            fontWeight = FontWeight.Bold,
+                            color = MiuixTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+            if (gridState.firstVisibleItemIndex > 3) {
+                Card(
+                    modifier = Modifier.size(58.dp),
+                    cornerRadius = 29.dp,
+                    insideMargin = PaddingValues(14.dp),
+                    onClick = {
+                        scope.launch { gridState.animateScrollToItem(0) }
+                    },
+                ) {
+                    Icon(
+                        imageVector = BackToTopArrow,
+                        contentDescription = "回到顶部",
+                        tint = MiuixTheme.colorScheme.primary,
+                        modifier = Modifier.size(30.dp),
                     )
-                    .size(58.dp),
-                cornerRadius = 29.dp,
-                insideMargin = PaddingValues(14.dp),
-                onClick = {
-                    scope.launch { gridState.animateScrollToItem(0) }
-                },
-            ) {
-                Icon(
-                    imageVector = BackToTopArrow,
-                    contentDescription = "回到顶部",
-                    tint = MiuixTheme.colorScheme.primary,
-                    modifier = Modifier.size(30.dp),
-                )
+                }
+            }
+        }
+    }
+
+    if (showIpJump) {
+        OverlayDialog(
+            show = true,
+            title = "IP 跳转",
+            summary = "点任意 IP / 分组直接跳过去",
+            onDismissRequest = { showIpJump = false },
+        ) {
+            TextField(
+                value = ipQuery,
+                onValueChange = { ipQuery = it.take(60) },
+                label = "搜索名称",
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            val jumpList = groups.keys.filter {
+                ipQuery.isBlank() || it.contains(ipQuery.trim(), ignoreCase = true)
+            }
+            LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
+                lazyItems(jumpList, key = { it }) { name ->
+                    val target = groupAnchors[name]
+                    val count = groups[name]?.size ?: 0
+                    TextButton(
+                        text = "$name  ($count)",
+                        onClick = {
+                            if (target != null) {
+                                showIpJump = false
+                                scope.launch { gridState.animateScrollToItem(target) }
+                            }
+                        },
+                        enabled = target != null,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
             }
         }
     }
