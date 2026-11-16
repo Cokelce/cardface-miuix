@@ -9,6 +9,26 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // 卡面库缩略图并发：Coil 默认并发较低，滚动时后面的图排队很慢。
+        // OkHttpNetworkFetcher.factory 不是公开 Kotlin API，这里用反射拿到工厂，失败则保持默认加载器。
+        try {
+            val client = okhttp3.OkHttpClient.Builder()
+                .dispatcher(
+                    okhttp3.Dispatcher().apply {
+                        maxRequests = 24
+                        maxRequestsPerHost = 12
+                    },
+                )
+                .build()
+            val fetcherClass = Class.forName("coil3.network.okhttp.OkHttpNetworkFetcher")
+            val factoryMethod = fetcherClass.getMethod("factory", okhttp3.Call.Factory::class.java)
+            val factory = factoryMethod.invoke(null, client) as coil3.network.NetworkFetcher.Factory
+            val loader = coil3.ImageLoader.Builder(this)
+                .components { add(factory) }
+                .build()
+            coil3.SingletonImageLoader.setUnsafe(loader)
+        } catch (_: Throwable) {
+        }
         // 初始化 LSPosed RemotePreferences 通道，并把本地映射迁移过去（异步、失败不影响使用）。
         try {
             com.dsh.miuix.cardface.core.RemotePrefsBridge.init()

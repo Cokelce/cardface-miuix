@@ -59,17 +59,17 @@ object HibankCatalogSource {
      * 列表缩略图：原站不提供缩略图，走 wsrv.nl 图片代理压成小尺寸 WebP（约 15–25KB/张），
      * 流量大减；失败时调用方回退原图。原图地址仍必须通过来源白名单校验。
      */
-    fun thumbnailUrl(imageUrl: String, width: Int = 400): String {
+    fun thumbnailUrl(imageUrl: String, width: Int = 320): String {
         val normalized = normalizeImageUrl(imageUrl) ?: return imageUrl
         return "https://wsrv.nl/?url=" + URLEncoder.encode(normalized, "UTF-8") +
-            "&w=$width&output=webp&q=72&we"
+            "&w=$width&output=webp&q=65&we"
     }
 
     /** 详情预览：比列表大但仍压缩，点「使用此卡面」才下载原图。 */
-    fun previewUrl(imageUrl: String, width: Int = 1080): String {
+    fun previewUrl(imageUrl: String, width: Int = 900): String {
         val normalized = normalizeImageUrl(imageUrl) ?: return imageUrl
         return "https://wsrv.nl/?url=" + URLEncoder.encode(normalized, "UTF-8") +
-            "&w=$width&output=webp&q=82&we"
+            "&w=$width&output=webp&q=78&we"
     }
 
     fun parse(text: String, category: CatalogCategory): CatalogPage {

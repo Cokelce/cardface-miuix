@@ -743,8 +743,7 @@ fun CatalogScreen(
         ) {
             AppAsyncImage(
                 model = repo.localImage(current)?.let { Uri.fromFile(it).toString() }
-                    ?: HibankCatalogSource.previewUrl(current.imageUrl),
-                fallbackModel = current.imageUrl,
+                    ?: current.imageUrl,
                 contentDescription = current.title,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -956,8 +955,7 @@ private fun CatalogTile(
         ) {
             AppAsyncImage(
                 model = localImage?.let { Uri.fromFile(it).toString() }
-                    ?: HibankCatalogSource.thumbnailUrl(item.imageUrl),
-                fallbackModel = item.imageUrl,
+                    ?: item.imageUrl,
                 contentDescription = item.title,
                 modifier = Modifier.fillMaxSize(),
                 backgroundBrush = cardThumbnailGradient(),
