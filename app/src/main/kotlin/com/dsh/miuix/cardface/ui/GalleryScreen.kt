@@ -108,6 +108,7 @@ fun GalleryScreen(
     fun buildPoster(image: GalleryImage, style: com.dsh.miuix.cardface.core.CardPoster.Style, palette: Int) {
         posterLoading = true
         scope.launch {
+            kotlinx.coroutines.yield()
             val bmp = withContext(Dispatchers.IO) {
                 runCatching {
                     com.dsh.miuix.cardface.core.CardPoster.create(
@@ -248,6 +249,7 @@ fun GalleryScreen(
                     onShare = {
                         posterSource = image
                         preview = null
+                        poster = null
                         posterOpen = true
                         buildPoster(image, posterStyle, posterPalette)
                     },

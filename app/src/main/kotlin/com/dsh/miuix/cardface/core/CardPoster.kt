@@ -56,11 +56,11 @@ object CardPoster {
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
 
         // 头部品牌
-        p.typeface = bold; p.textSize = 74f; p.color = textColor
+        p.typeface = bold; p.textSize = 80f; p.color = textColor
         canvas.drawText("卡面工坊", 120f, 170f, p)
-        p.typeface = normal; p.textSize = 34f; p.color = subColor
+        p.typeface = normal; p.textSize = 36f; p.color = subColor
         canvas.drawText("CARD FACE STUDIO", 122f, 222f, p)
-        p.textAlign = Paint.Align.RIGHT; p.textSize = 34f
+        p.textAlign = Paint.Align.RIGHT; p.textSize = 36f
         canvas.drawText(SimpleDateFormat("yyyy.MM.dd", Locale.CHINA).format(Date()), W - 120f, 170f, p)
         p.textAlign = Paint.Align.LEFT
 
@@ -68,31 +68,31 @@ object CardPoster {
             portrait && style == Style.CLASSIC -> {
                 val rect = RectF(150f, 500f, 2010f, 1674f)
                 drawCard(canvas, card, rect, accent)
-                p.typeface = bold; p.textSize = 88f; p.color = textColor
-                canvas.drawText(clip(name), 150f, 1860f, p)
-                p.typeface = normal; p.textSize = 44f; p.color = subColor
+                p.typeface = bold; p.textSize = 96f; p.color = textColor
+                canvas.drawText(clip(name), 150f, 1856f, p)
+                p.typeface = normal; p.textSize = 48f; p.color = subColor
                 canvas.drawText("用喜欢的画面，点亮每天的第一眼。", 152f, 1932f, p)
                 accentBar(canvas, 150f, 1994f, 380f, accent)
             }
             portrait && style == Style.SPLIT -> {
-                p.typeface = bold; p.textSize = 96f; p.color = textColor
+                p.typeface = bold; p.textSize = 104f; p.color = textColor
                 canvas.drawText(clip(name), 150f, 480f, p)
-                p.typeface = normal; p.textSize = 42f; p.color = subColor
+                p.typeface = normal; p.textSize = 46f; p.color = subColor
                 canvas.drawText("把喜欢的画面，装进每天都会刷的卡里。", 152f, 552f, p)
                 accentBar(canvas, 150f, 606f, 340f, accent)
                 val rect = RectF(150f, 700f, 2010f, 1874f)
                 drawCard(canvas, card, rect, accent)
-                p.textSize = 36f; p.color = subColor
+                p.textSize = 38f; p.color = subColor
                 canvas.drawText("LSPOSED · 小米智能卡卡面", 150f, 1970f, p)
             }
             portrait && style == Style.MINIMAL -> {
-                p.typeface = bold; p.textSize = 76f; p.color = textColor
+                p.typeface = bold; p.textSize = 84f; p.color = textColor
                 p.textAlign = Paint.Align.CENTER
                 canvas.drawText(clip(name), W / 2f, 690f, p)
                 p.textAlign = Paint.Align.LEFT
                 val rect = RectF(260f, 820f, 1900f, 1855f)
                 drawCard(canvas, card, rect, accent)
-                p.typeface = normal; p.textSize = 38f; p.color = subColor
+                p.typeface = normal; p.textSize = 42f; p.color = subColor
                 p.textAlign = Paint.Align.CENTER
                 canvas.drawText("用喜欢的画面，点亮每天的第一眼。", W / 2f, 1960f, p)
                 p.textAlign = Paint.Align.LEFT
@@ -100,23 +100,23 @@ object CardPoster {
             !portrait && style == Style.CLASSIC -> {
                 val rect = RectF(140f, 400f, 1900f, 1513f)
                 drawCard(canvas, card, rect, accent)
-                p.typeface = bold; p.textSize = 92f; p.color = textColor
+                p.typeface = bold; p.textSize = 100f; p.color = textColor
                 drawWrapped(canvas, clip(name), 2040f, 760f, 700f, p, 2)
-                p.typeface = normal; p.textSize = 44f; p.color = subColor
+                p.typeface = normal; p.textSize = 48f; p.color = subColor
                 canvas.drawText("用喜欢的画面，", 2044f, 1080f, p)
                 canvas.drawText("点亮每天的第一眼。", 2044f, 1140f, p)
                 accentBar(canvas, 2044f, 1200f, 340f, accent)
             }
             !portrait && style == Style.SPLIT -> {
-                p.typeface = bold; p.textSize = 120f; p.color = textColor
+                p.typeface = bold; p.textSize = 126f; p.color = textColor
                 canvas.drawText("卡面", 140f, 340f, p)
                 p.typeface = normal; p.textSize = 42f; p.color = subColor
                 canvas.drawText("STUDIO / POSTER", 144f, 400f, p)
                 val rect = RectF(140f, 470f, 1940f, 1583f)
                 drawCard(canvas, card, rect, accent)
-                p.typeface = bold; p.textSize = 80f; p.color = textColor
+                p.typeface = bold; p.textSize = 88f; p.color = textColor
                 canvas.drawText(clip(name), 2060f, 700f, p)
-                p.typeface = normal; p.textSize = 44f; p.color = subColor
+                p.typeface = normal; p.textSize = 48f; p.color = subColor
                 canvas.drawText("用喜欢的画面，", 2064f, 1000f, p)
                 canvas.drawText("点亮每天的第一眼。", 2064f, 1060f, p)
                 accentBar(canvas, 2064f, 1120f, 300f, accent)
@@ -139,7 +139,7 @@ object CardPoster {
             strokeWidth = 2f
         }
         canvas.drawLine(120f, H - 190f, W - 120f, H - 190f, line)
-        p.typeface = normal; p.textSize = 32f; p.color = subColor
+        p.typeface = normal; p.textSize = 35f; p.color = subColor
         p.textAlign = Paint.Align.LEFT
         canvas.drawText("LSPOSED · 小米智能卡卡面", 120f, H - 130f, p)
         p.textAlign = Paint.Align.RIGHT
