@@ -14,6 +14,12 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
+import android.graphics.Bitmap
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -88,6 +94,8 @@ fun GalleryScreen(
     var deleteTarget by remember { mutableStateOf<GalleryImage?>(null) }
     var actionTarget by remember { mutableStateOf<GalleryImage?>(null) }
     var renameTarget by remember { mutableStateOf<GalleryImage?>(null) }
+    var poster by remember { mutableStateOf<Bitmap?>(null) }
+    val accent = MiuixTheme.colorScheme.primary.toArgb()
     val animationsEnabled = LocalAnimationsEnabled.current
     LaunchedEffect(preview) {
         if (preview != null) lastPreview = preview
@@ -208,7 +216,58 @@ fun GalleryScreen(
             label = "galleryPreview",
         ) {
             lastPreview?.let { image ->
-                GalleryPreview(image = image, onClose = { preview = null }, onShare = { com.dsh.miuix.cardface.core.CardShare.shareImage(context, image.file) })
+                GalleryPreview(
+                    image = image,
+                    onClose = { preview = null },
+                    onShare = {
+                        scope.launch {
+                            val bmp = withContext(Dispatchers.IO) {
+                                runCatching {
+                                    com.dsh.miuix.cardface.core.CardPoster.create(
+                                        context, image.file, image.name.substringBeforeLast('.'), accent,
+                                    )
+                                }.getOrNull()
+                            }
+                            if (bmp != null) poster = bmp else model.notify("海报生成失败")
+                        }
+                    },
+                )
+            }
+        }
+
+        poster?.let { bmp ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.92f)),
+            ) {
+                Image(
+                    bitmap = bmp.asImageBitmap(),
+                    contentDescription = "分享海报",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp)
+                        .align(Alignment.Center),
+                    contentScale = ContentScale.Fit,
+                )
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 28.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    TextButton(text = "分享", onClick = {
+                        val file = com.dsh.miuix.cardface.core.CardPoster.save(context, bmp)
+                        com.dsh.miuix.cardface.core.CardShare.shareImage(context, file)
+                    })
+                    TextButton(text = "保存到相册", onClick = {
+                        val ok = com.dsh.miuix.cardface.core.CardPoster.saveToGallery(
+                            context, bmp, "卡面工坊海报",
+                        )
+                        model.notify(if (ok) "海报已保存到相册" else "保存失败")
+                    })
+                    TextButton(text = "关闭", onClick = { poster = null })
+                }
             }
         }
     }
