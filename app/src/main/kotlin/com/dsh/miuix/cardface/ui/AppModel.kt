@@ -224,13 +224,4 @@ val CARD_LOGOS: List<Pair<String, String>> = listOf(
     "shanghai" to "上海",
     "qvanchengtong" to "泉城通",
     "yinchuan" to "银川",
-    // 从钱包官方素材重新生成的高清标志（第一批）
-    "wallet_bmac" to "北京一卡通",
-    "wallet_shanghai" to "上海交通卡",
-    "wallet_lingnan" to "岭南通",
-    "wallet_szt" to "深圳通",
-    "wallet_wht" to "武汉通",
-    "wallet_xian" to "长安通",
-    "wallet_hzt" to "杭州通",
-    "wallet_qingdao" to "琴岛通",
 )
