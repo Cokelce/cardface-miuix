@@ -87,6 +87,11 @@ class AppPrefs(context: Context) {
         get() = settings.getBoolean(KEY_DEV_MODE, false)
         set(v) = settings.edit().putBoolean(KEY_DEV_MODE, v).apply().also { touch() }
 
+    /** 保存到图库前是否先弹命名框（从相册/卡面库选图后）。 */
+    var askNameOnGallerySave: Boolean
+        get() = settings.getBoolean("ask_name_gallery", false)
+        set(v) = settings.edit().putBoolean("ask_name_gallery", v).apply().also { touch() }
+
     /** 是否在首页/编辑页显示「卡面库」入口（第三方在线图片源，可关闭）。 */
     var catalogEnabled: Boolean
         get() = settings.getBoolean("catalog_enabled", true)

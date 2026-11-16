@@ -14,6 +14,19 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.AnimatedContent
+import android.graphics.Bitmap
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -120,6 +133,8 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val nav = rememberSaveable(saver = NavState.Saver) { NavState() }
+    var pendingGallerySave by remember { mutableStateOf<Bitmap?>(null) }
+    var pendingGalleryName by remember { mutableStateOf("") }
     val route = nav.current
     val currentPage = route.page
 
@@ -327,6 +342,11 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                                 var name = ""
                                 if (card == null) {
                                     model.notify("保存失败：图片合成出错")
+                                } else if (model.prefs.askNameOnGallerySave && batchTotal <= 1) {
+                                    // 开关打开：先弹命名框，等用户确认后再保存
+                                    pendingGallerySave = card
+                                    pendingGalleryName = model.store.defaultName().removeSuffix(".png")
+                                    return@launch
                                 } else {
                                     name = model.store.uniqueName(model.store.defaultName())
                                     saved = withContext(Dispatchers.IO) {
@@ -391,6 +411,59 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
             }
             }
         }
+
+    val saveBitmap = pendingGallerySave
+    if (saveBitmap != null) {
+        OverlayDialog(
+            show = true,
+            title = "命名图片",
+            summary = "保存到图库前给这张图起个名字",
+            onDismissRequest = {
+                pendingGallerySave = null
+                saveBitmap.recycle()
+                nav.pop()
+            },
+        ) {
+            TextField(
+                value = pendingGalleryName,
+                onValueChange = { pendingGalleryName = it.take(60) },
+                label = "图片名称",
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(
+                    text = "取消",
+                    onClick = {
+                        pendingGallerySave = null
+                        saveBitmap.recycle()
+                        nav.pop()
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = "保存",
+                    onClick = {
+                        scope.launch {
+                            val newName = runCatching {
+                                model.store.uniqueName(pendingGalleryName.ifBlank { model.store.defaultName() })
+                            }.getOrDefault(model.store.defaultName())
+                            val ok = withContext(Dispatchers.IO) {
+                                runCatching { model.store.save(saveBitmap, newName) }.isSuccess
+                            }
+                            saveBitmap.recycle()
+                            pendingGallerySave = null
+                            model.bumpStore()
+                            model.notify(if (ok) "已保存到图库：$newName" else "保存失败")
+                            nav.pop()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
     }
 }
 

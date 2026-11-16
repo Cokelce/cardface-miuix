@@ -62,6 +62,7 @@ import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Notes
 import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.icon.extended.Refresh
+import top.yukonga.miuix.kmp.icon.extended.Rename
 import top.yukonga.miuix.kmp.icon.extended.Reset
 import top.yukonga.miuix.kmp.icon.extended.Show
 import top.yukonga.miuix.kmp.icon.extended.Theme
@@ -265,6 +266,14 @@ fun SettingsScreen(
                     summary = "在线卡面库（Hibank 图片源），关闭后首页/编辑页隐藏入口",
                     checked = prefs.catalogEnabled,
                     onCheckedChange = { prefs.catalogEnabled = it },
+                )
+                RowDivider()
+                SwitchPreference(
+                    title = "保存到图库前命名",
+                    startAction = { SettingRowIcon(MiuixIcons.Rename) },
+                    summary = "开启后，从相册选图保存到图库时会先输入名称；关闭则自动命名",
+                    checked = prefs.askNameOnGallerySave,
+                    onCheckedChange = { prefs.askNameOnGallerySave = it },
                 )
                 RowDivider()
                 ArrowPreference(
