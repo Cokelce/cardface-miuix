@@ -1,5 +1,6 @@
 package com.dsh.miuix.cardface.core
 
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -26,8 +27,17 @@ object Updates {
         val htmlUrl: String,
     )
 
+    data class ReleaseEntry(
+        val date: String,
+        val versionName: String,
+        val body: String,
+        val htmlUrl: String,
+    )
+
     private const val API =
         "https://api.github.com/repos/MiamBao/cardface-miuix/releases/latest"
+    private const val API_LIST =
+        "https://api.github.com/repos/MiamBao/cardface-miuix/releases?per_page=20"
 
     /** 网络请求失败返回 null，调用方按「检查失败」处理。 */
     fun fetchLatest(): Release? = runCatching {
@@ -48,6 +58,33 @@ object Updates {
                 body = json.optString("body").trim(),
                 htmlUrl = json.optString("html_url"),
             )
+        } finally {
+            conn.disconnect()
+        }
+    }.getOrNull()
+
+    /** 更新公告列表（最近 20 个 Release），失败返回 null。 */
+    fun fetchReleases(): List<ReleaseEntry>? = runCatching {
+        val conn = URL(API_LIST).openConnection() as HttpURLConnection
+        conn.connectTimeout = 10000
+        conn.readTimeout = 10000
+        conn.setRequestProperty("User-Agent", "cardface-miuix")
+        conn.setRequestProperty("Accept", "application/vnd.github+json")
+        try {
+            if (conn.responseCode != 200) return null
+            val text = conn.inputStream.bufferedReader().use { it.readText() }
+            val array = JSONArray(text)
+            (0 until array.length()).mapNotNull { i ->
+                val json = array.optJSONObject(i) ?: return@mapNotNull null
+                val tag = json.optString("tag_name")
+                val version = tag.substringAfterLast('-').ifBlank { tag }.removePrefix("v")
+                ReleaseEntry(
+                    date = json.optString("published_at").take(10),
+                    versionName = version,
+                    body = json.optString("body").trim(),
+                    htmlUrl = json.optString("html_url"),
+                )
+            }
         } finally {
             conn.disconnect()
         }

@@ -50,6 +50,7 @@ import com.dsh.miuix.cardface.ui.AppModel
 import com.dsh.miuix.cardface.ui.AboutScreen
 import com.dsh.miuix.cardface.ui.BlacklistScreen
 import com.dsh.miuix.cardface.ui.CardImaging
+import com.dsh.miuix.cardface.ui.ChangelogScreen
 import com.dsh.miuix.cardface.ui.CatalogScreen
 import com.dsh.miuix.cardface.ui.CropScreen
 import com.dsh.miuix.cardface.ui.CropTarget
@@ -375,6 +376,12 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                     model = model,
                     innerPadding = innerPadding,
                     onBack = { nav.pop() },
+                    onOpenChangelog = { nav.push(Route(Page.Changelog)) },
+                )
+
+                Page.Changelog -> ChangelogScreen(
+                    innerPadding = innerPadding,
+                    onBack = { nav.pop() },
                 )
 
                 Page.Guide -> GuideScreen(
@@ -395,6 +402,7 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                     onBack = { nav.pop() },
                     onOpenGuide = { nav.push(Route(Page.Guide)) },
                     onOpenFaq = { nav.push(Route(Page.Faq)) },
+                    onOpenChangelog = { nav.push(Route(Page.Changelog)) },
                 )
 
                 Page.Blacklist -> BlacklistScreen(

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -242,6 +243,7 @@ fun AboutScreen(
     onBack: () -> Unit,
     onOpenGuide: () -> Unit = {},
     onOpenFaq: () -> Unit = {},
+    onOpenChangelog: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -376,8 +378,8 @@ fun AboutScreen(
                     HorizontalDivider()
                     ArrowPreference(
                         title = "更新公告",
-                        summary = "查看最近版本的更新内容",
-                        onClick = { showAnnouncement() },
+                        summary = "查看历史版本的更新日志",
+                        onClick = onOpenChangelog,
                     )
                     HorizontalDivider()
                     SwitchPreference(
@@ -763,6 +765,7 @@ fun VersionScreen(
     model: AppModel,
     innerPadding: PaddingValues,
     onBack: () -> Unit,
+    onOpenChangelog: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -871,8 +874,8 @@ fun VersionScreen(
                     )
                     ArrowPreference(
                         title = "更新公告",
-                        summary = "查看最近版本的更新内容",
-                        onClick = { showAnnouncement() },
+                        summary = "查看历史版本的更新日志",
+                        onClick = onOpenChangelog,
                     )
                     HorizontalDivider(
                         modifier = Modifier.padding(horizontal = 16.dp),
@@ -931,5 +934,138 @@ fun VersionScreen(
             message = infoValue.second,
             onDismiss = { info = null },
         )
+    }
+}
+
+/** 更新日志：参考 DuJi 的版本列表样式（日期 + 版本 + 条目）。 */
+@Composable
+fun ChangelogScreen(
+    innerPadding: PaddingValues,
+    onBack: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var releases by remember { mutableStateOf<List<Updates.ReleaseEntry>>(emptyList()) }
+    var reload by remember { mutableStateOf(0) }
+
+    LaunchedEffect(reload) {
+        loading = true
+        error = null
+        val result = withContext(Dispatchers.IO) { Updates.fetchReleases() }
+        if (result == null) {
+            error = "获取更新日志失败，请检查网络后重试。"
+        } else {
+            // GitHub 返回顺序按创建时间，这里按版本号从新到旧排（和 DuJi 一致）。
+            releases = result.sortedWith { a, b ->
+                when {
+                    Updates.isNewer(a.versionName, b.versionName) -> -1
+                    Updates.isNewer(b.versionName, a.versionName) -> 1
+                    else -> 0
+                }
+            }
+        }
+        loading = false
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(
+            top = innerPadding.calculateTopPadding(),
+            bottom = innerPadding.calculateBottomPadding() + 28.dp,
+        ),
+    ) {
+        item(key = "header") { BackHeader(title = "更新日志", onBack = onBack) }
+
+        if (loading) {
+            item(key = "loading") {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    cornerRadius = 20.dp,
+                    insideMargin = PaddingValues(20.dp),
+                ) {
+                    Text(
+                        text = "正在获取更新日志…",
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+            }
+        }
+
+        val err = error
+        if (err != null) {
+            item(key = "error") {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    cornerRadius = 20.dp,
+                    insideMargin = PaddingValues(20.dp),
+                ) {
+                    Text(
+                        text = err,
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    TextButton(
+                        text = "重试",
+                        onClick = { reload++ },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+
+        items(releases.size, key = { "release-${releases[it].versionName}-${releases[it].date}" }) { index ->
+            val release = releases[index]
+            val lines = release.body.lineSequence()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() && !it.startsWith("##") && !it.startsWith("#") }
+                .map { it.removePrefix("- ").removePrefix("* ").trim() }
+                .filter { it.isNotEmpty() }
+                .toList()
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                cornerRadius = 20.dp,
+                insideMargin = PaddingValues(18.dp),
+            ) {
+                Text(
+                    text = release.date,
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "v${release.versionName}",
+                    style = MiuixTheme.textStyles.headline2,
+                    fontWeight = FontWeight.Bold,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+                if (lines.isEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "暂无更新说明",
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                } else {
+                    Spacer(Modifier.height(8.dp))
+                    lines.forEach { line ->
+                        Text(
+                            text = line,
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(bottom = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
