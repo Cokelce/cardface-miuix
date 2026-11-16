@@ -298,14 +298,6 @@ fun EditorScreen(
                         style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.onSurface,
                     )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = url,
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onBackgroundVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
             }
 
@@ -400,12 +392,6 @@ fun EditorScreen(
                             )
                         }
                     }
-                    Text(
-                        text = "输出 960×606 PNG · Lanczos3 高质量缩放",
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onBackgroundVariant,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                    )
                 }
             }
         }
