@@ -219,6 +219,7 @@ class AppPrefs(context: Context) {
         val replacementNames = mappedImageNames().toSet()
         return allCardUrls()
             .filterNot { black.contains(it) }
+            .filterNot { isHiddenNonFace(it) }
             // 卡包加载我们复制进去的替换图时也会产生 file:// URL，这不是真实卡面，过滤掉。
             .filterNot { url ->
                 val name = url.substringAfterLast('/')
@@ -255,8 +256,13 @@ class AppPrefs(context: Context) {
     }
 
     /** 黑名单里的卡面（用于黑名单页展示）。 */
+    /** 这三张是银行卡里的广告/示意图，不属于卡面，任何列表都不展示。 */
+    fun isHiddenNonFace(url: String): Boolean = url in HIDDEN_NON_FACE_URLS
+
     fun blacklistedCardFaces(): List<CardFaceItem> =
-        blacklistedUrls().sorted().map {
+        blacklistedUrls()
+            .filterNot { isHiddenNonFace(it) }
+            .sorted().map {
             CardFaceItem(url = it, replacement = replacementFor(it), customName = customName(it))
         }
 
@@ -349,6 +355,12 @@ class AppPrefs(context: Context) {
         const val KEY_HIDE_ICON = "hide_icon"
         const val KEY_SHOW_ALL_CARDS = "show_all_cards"
         const val KEY_SUPER_LAND = "super_land"
+
+        private val HIDDEN_NON_FACE_URLS = setOf(
+            "https://f1.market.xiaomi.com/mfc/thumbnail/webp/w1080h1920q80/NextPay/049d37450fbc04115108de552ccb433d13f7f23d6",
+            "https://f1.market.xiaomi.com/mfc/thumbnail/webp/w1080h1920q80/NextPay/09561b469c2be4ad0177235193bf781920df7eef3",
+            "https://f1.market.xiaomi.com/mfc/thumbnail/webp/w1080h1920q80/NextPay/0cb94e4a8a0644d47318a94b224142d71846f74d0",
+        )
         const val KEY_TEST_MODE = "test_mode"
         const val KEY_DEBUG = "debug"
         const val KEY_DEV_MODE = "dev_mode_open"

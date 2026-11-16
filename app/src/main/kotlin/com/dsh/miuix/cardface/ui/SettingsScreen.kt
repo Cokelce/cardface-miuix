@@ -246,7 +246,7 @@ fun SettingsScreen(
                 ArrowPreference(
                     title = "主界面卡面黑名单",
                     startAction = { SettingRowIcon(MiuixIcons.Blocklist) },
-                    summary = "已加入 ${prefs.blacklistedUrls().size} 张",
+                    summary = "已加入 ${prefs.blacklistedCardFaces().size} 张",
                     onClick = onOpenBlacklist,
                 )
             }
