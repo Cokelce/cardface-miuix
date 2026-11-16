@@ -354,7 +354,7 @@ fun AboutScreen(
         // 项目：地址 / 检查更新 / 更新公告 / 自动检查开关
         item(key = "project") {
             Column {
-                SmallTitle(text = "项目")
+                SmallTitle(text = "版本与更新")
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -389,6 +389,27 @@ fun AboutScreen(
                             prefs.autoCheckUpdate = it
                         },
                     )
+                }
+            }
+        }
+
+        // 帮助与反馈
+        item(key = "help") {
+            Column {
+                SmallTitle(text = "帮助与反馈")
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    cornerRadius = 20.dp,
+                    insideMargin = PaddingValues(0.dp),
+                ) {
+                    ArrowPreference(title = "使用说明", summary = "从启用模块到换卡面的完整步骤", onClick = onOpenGuide)
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MiuixTheme.colorScheme.dividerLine,
+                    )
+                    ArrowPreference(title = "常见问题", summary = "不生效、卡面不刷新、权限问题", onClick = onOpenFaq)
                 }
             }
         }
@@ -463,27 +484,6 @@ fun AboutScreen(
             }
         }
 
-        // 帮助与反馈
-        item(key = "help") {
-            Column {
-                SmallTitle(text = "帮助与反馈")
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    cornerRadius = 20.dp,
-                    insideMargin = PaddingValues(0.dp),
-                ) {
-                    ArrowPreference(title = "使用说明", summary = "从启用模块到换卡面的完整步骤", onClick = onOpenGuide)
-                    HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        color = MiuixTheme.colorScheme.dividerLine,
-                    )
-                    ArrowPreference(title = "常见问题", summary = "不生效、卡面不刷新、权限问题", onClick = onOpenFaq)
-                }
-            }
-        }
-
         // 兼容性与免责声明
         item(key = "compat") {
             Column {
@@ -509,42 +509,10 @@ fun AboutScreen(
                         "使用限制",
                         "请勿将本应用用于伪造证件、支付欺诈等任何违法用途。",
                     )
-                }
-            }
-        }
-
-        // 隐私
-        item(key = "privacy") {
-            Column {
-                SmallTitle(text = "隐私")
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    cornerRadius = 20.dp,
-                    insideMargin = PaddingValues(20.dp),
-                ) {
-                    AboutLine("不收集数据", "没有统计、没有广告、不请求账号信息；网络只用于加载卡面原始图片地址。")
-                    AboutLine("只在本机处理", "裁剪 / 缩放 / 合成全部在手机本地完成，替换图存在应用私有目录。")
-                }
-            }
-        }
-
-        // 支持作者（不再放 QQ 群）
-        item(key = "support") {
-            Column {
-                SmallTitle(text = "支持作者")
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    cornerRadius = 20.dp,
-                    insideMargin = PaddingValues(20.dp),
-                ) {
-                    Text(
-                        text = "项目完全免费、无付费功能、无广告。用得顺手的话，把「卡面工坊」推荐给需要的人就是最好的支持。",
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    AboutLine(
+                        "隐私",
+                        "没有统计、没有广告、不请求账号信息；裁剪 / 缩放 / 合成全部在手机本地完成，" +
+                            "替换图存在应用私有目录。",
                     )
                 }
             }

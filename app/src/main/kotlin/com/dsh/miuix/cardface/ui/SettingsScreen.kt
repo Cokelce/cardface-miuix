@@ -127,14 +127,13 @@ fun SettingsScreen(
         item(key = "header") {
             LargeTitleHeader(
                 title = "设置",
-                subtitle = "模块状态、显示方式与缓存",
                 contentPadding = PaddingValues(start = 20.dp, end = 10.dp, top = 14.dp, bottom = 8.dp),
             )
         }
 
         // ---------- 模块 ----------
         item(key = "module") {
-            SettingsGroup("模块") {
+            SettingsGroup("模块与卡包") {
                 val moduleSummary = when {
                     status == null -> "读取失败"
                     status.lastHookAt <= 0L -> "未生效 · 打开卡包浏览卡面后自动上报"
@@ -355,7 +354,7 @@ fun SettingsScreen(
 
         // ---------- 缓存与修复 ----------
         item(key = "cache") {
-            SettingsGroup("缓存与修复") {
+            SettingsGroup("数据与维护") {
                 ArrowPreference(
                     title = "清除 hook 点缓存",
                     startAction = { SettingRowIcon(MiuixIcons.Refresh) },
@@ -475,7 +474,8 @@ fun SettingsScreen(
             SettingsGroup("关于") {
                 ArrowPreference(
                     title = "版本 v$versionName",
-                    summary = if (prefs.devMode) "Miuix 重制版 · 高级设置已解锁" else "Miuix 重制版",
+                    summary = "内部 ${com.dsh.miuix.cardface.core.BuildInfo.INTERNAL_VERSION} · " +
+                        if (prefs.devMode) "高级设置已解锁" else "点 10 次解锁高级设置",
                     onClick = {
                         if (prefs.devMode) {
                             onOpenAbout()

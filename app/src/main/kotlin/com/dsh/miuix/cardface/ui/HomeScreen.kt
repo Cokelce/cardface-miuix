@@ -156,7 +156,6 @@ fun HomeScreen(
             item(span = { GridItemSpan(maxLineSpan) }, key = "header") {
                 LargeTitleHeader(
                     title = "卡面工坊",
-                    subtitle = "把卡包里千篇一律的卡面换成你喜欢的图",
                     contentPadding = PaddingValues(start = 4.dp, end = 2.dp, top = 14.dp, bottom = 10.dp),
                 ) {
                     IconButton(onClick = { isRefreshing = true }) {

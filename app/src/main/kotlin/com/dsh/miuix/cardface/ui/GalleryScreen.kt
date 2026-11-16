@@ -133,7 +133,6 @@ fun GalleryScreen(
             item(span = { GridItemSpan(maxLineSpan) }, key = "header") {
                 LargeTitleHeader(
                     title = "图库",
-                    subtitle = "已保存 ${images.size} 张替换图",
                     contentPadding = PaddingValues(start = 4.dp, end = 2.dp, top = 14.dp, bottom = 10.dp),
                 ) {
                     if (model.prefs.catalogEnabled) {
