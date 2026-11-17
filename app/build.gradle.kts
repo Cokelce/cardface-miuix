@@ -16,8 +16,9 @@ android {
         applicationId = "io.github.miambao.cardface.oneplus"
         minSdk = 26
         targetSdk = 36
-        versionCode = 52
-        versionName = "2.0.1-oneplus.1"
+        versionCode = 53
+        versionName = "2.0.1-oneplus.2"
+        testInstrumentationRunner = "com.dsh.miuix.cardface.UpdateSessionInstrumentation"
     }
 
     // 签名信息从本地的 keystore.properties 读取（该文件与 keystore/ 都不入库）。

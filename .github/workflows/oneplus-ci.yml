@@ -32,7 +32,7 @@ jobs:
           signing-keystore: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
           artifact-name: oneplus-${{ github.run_number }}-${{ github.run_attempt }}
       - name: Publish checked OnePlus prerelease
-        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+        if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && inputs.publish)
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.build.outputs.version }}
