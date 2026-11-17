@@ -1,0 +1,15 @@
+{
+  "retired_tags": [
+    "v1.0.5-oneplus.2",
+    "v1.0.5-oneplus.6",
+    "v1.0.5-oneplus.7",
+    "v1.0.5-oneplus.8",
+    "v1.0.5-oneplus.9",
+    "v1.0.5-oneplus.10",
+    "v1.0.5-oneplus.11",
+    "v1.0.8-oneplus.11",
+    "v2.0.0-oneplus.5",
+    "v2.0.1-oneplus.1"
+  ],
+  "reason": "用户于2026-11-17删除历史预发布，自动化不重新创建这些Release；源码标签保留。"
+}

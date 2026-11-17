@@ -19,6 +19,11 @@ class PrereleaseTests(unittest.TestCase):
         (Path(folder) / 'test-summary.txt').write_text('Tests=117, failures=0, errors=0, skipped=0\n')
         return apk
 
+    def test_retired_release_never_contacts_github(self):
+        with patch.object(m, 'retired', return_value=True), patch.object(m, 'api') as api:
+            self.assertIsNone(m.publish('2.0.1-oneplus.1', 'a' * 40, '/missing'))
+            api.assert_not_called()
+
     def test_checked_apk(self):
         with tempfile.TemporaryDirectory() as folder:
             apk = self.artifact(folder)
@@ -74,7 +79,7 @@ class PrereleaseTests(unittest.TestCase):
                     self.assertFalse(payload['draft'])
                     return {'draft': False, 'assets': uploaded, 'html_url': 'https://example.invalid/release'}
                 raise AssertionError(path)
-            with patch.object(m, 'api', fake_api):
+            with patch.object(m, 'retired', return_value=False), patch.object(m, 'api', fake_api):
                 self.assertEqual(m.publish('2.0.1-oneplus.1', 'a' * 40, folder), 'https://example.invalid/release')
             self.assertEqual(calls[-1][1], 'PATCH')
 
@@ -84,7 +89,7 @@ class PrereleaseTests(unittest.TestCase):
             release = {'draft': False, 'html_url': 'https://example.invalid/existing', 'assets': [
                 {'name': 'CardFace-2.0.1-oneplus.1.apk', 'state': 'uploaded', 'size': 2000},
                 {'name': 'CardFace-2.0.1-oneplus.1.apk.sha256', 'state': 'uploaded', 'size': 95}]}
-            with patch.object(m, 'api', return_value=release) as api:
+            with patch.object(m, 'retired', return_value=False), patch.object(m, 'api', return_value=release) as api:
                 m.publish('2.0.1-oneplus.1', 'a' * 40, folder)
                 self.assertEqual(api.call_count, 1)
 

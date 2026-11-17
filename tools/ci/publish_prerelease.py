@@ -61,7 +61,15 @@ def api(path, method='GET', payload=None, binary=None):
         raise RuntimeError(f'GitHub {method} failed: HTTP {exc.code}') from exc
 
 
+def retired(version, root=None):
+    path = (Path(root) if root is not None else Path(__file__).resolve().parents[2]) / '.github/retired-releases.json'
+    return path.exists() and 'v' + version in json.loads(path.read_text()).get('retired_tags', [])
+
+
 def publish(version, target, folder):
+    if retired(version):
+        print('Owner-retired release preserved as deleted:', version)
+        return None
     if not SHA.fullmatch(target):
         raise ValueError('Release target must be a full commit SHA')
     apk, checksum, digest, summary = checked_artifact(folder, version)

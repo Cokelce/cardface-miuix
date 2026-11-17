@@ -2,7 +2,7 @@
 """Prepare an upstream sync branch; no build, push, merge-to-main, or release."""
 from __future__ import annotations
 import argparse, json, os, re, subprocess, sys
-from publish_prerelease import release_assets_ready
+from publish_prerelease import release_assets_ready, retired
 from pathlib import Path
 from urllib import request, error, parse
 
@@ -188,6 +188,10 @@ def prepare() -> int:
         branch_version = branch_state.get("version", "")
         if branch_state.get("commit") != sha:
             raise RuntimeError("existing branch has mismatched upstream state; review required")
+        if retired(branch_version, ROOT):
+            emit(changed="false")
+            print(f"Owner-retired adaptation release skipped: {branch_version}")
+            return 0
         published = api("GET", "/releases?per_page=100")
         if any(r.get("tag_name") == "v" + branch_version and release_assets_ready(r, branch_version) for r in published):
             publish(branch, branch_version)
