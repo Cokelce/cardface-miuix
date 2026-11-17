@@ -18,6 +18,7 @@ manifest = text("app/src/main/AndroidManifest.xml")
 updates = text("app/src/main/kotlin/com/dsh/miuix/cardface/core/Updates.kt")
 info = text("app/src/main/kotlin/com/dsh/miuix/cardface/core/BuildInfo.kt")
 scope = text("app/src/main/resources/META-INF/xposed/scope.list")
+release_notes = text(".github/release-notes.json")
 editor = text("app/src/main/kotlin/com/dsh/miuix/cardface/ui/EditorScreen.kt")
 about = text("app/src/main/kotlin/com/dsh/miuix/cardface/ui/InfoScreens.kt")
 all_kotlin = "\n".join(str(p.relative_to(ROOT)) + "\n" + p.read_text(encoding="utf-8", errors="replace")
@@ -45,6 +46,16 @@ for config in ("gradle.properties", "settings.gradle.kts", "build.gradle.kts"):
     if any(value in text(config) for value in ("/workspace/", "/root/toolchain/", "/storage/emulated/")):
         errors.append(f"host-specific path in {config}")
 if "DeepSeek" in about: errors.append("removed About credit reintroduced")
+try:
+    import json
+    notes = json.loads(release_notes)
+    for version, entry in notes.items():
+        if not re.fullmatch(r"\d+\.\d+\.\d+-oneplus\.\d+", version): errors.append(f"invalid release-notes version: {version}")
+        if not entry.get("upstream_changes") or not entry.get("adaptation_changes"): errors.append(f"release-notes sections missing: {version}")
+        if any(re.search(r"(?i)(sha256|tests=|source commit|actions/runs|真机|签名检查)", item) for item in entry.get("upstream_changes", []) + entry.get("adaptation_changes", [])):
+            errors.append(f"non-change metadata in release notes: {version}")
+except Exception as exc:
+    errors.append(f"release notes catalogue invalid: {exc}")
 if "https://github.com/Cokelce/cardface-miuix" not in about: errors.append("About repository mismatch")
 
 if errors:

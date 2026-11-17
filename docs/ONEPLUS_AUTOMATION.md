@@ -64,3 +64,9 @@ bash ./gradlew --no-daemon :app:testDebugUnitTest :imaging:test :app:assembleDeb
 ```
 
 Linux 云端使用标准 Android SDK/AAPT2；手机本地编译可通过命令行 `-Pandroid.aapt2FromMavenOverride=/workspace/tools/aapt2` 指定本机工具，不在仓库写死手机绝对路径。
+
+## 更新日志展示
+
+应用内公告和 Releases 正文只包含「上游更新」「一加适配」两节，不混入测试数量、构建链接、提交编号、包名和 SHA256。校验值保留在附件和 GitHub asset digest，构建证据保留在 Actions。
+
+已整理版本说明保存在 `.github/release-notes.json`；新同步版本按上游提交变更生成对应条目并保留实际一加适配说明。未知版本没有条目时不复用旧版本日志，避免错误展示。

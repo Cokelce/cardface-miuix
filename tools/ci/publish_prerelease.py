@@ -76,17 +76,8 @@ def publish(version, target, folder):
     commit = api('/commits/' + target)
     if not commit or commit.get('sha') != target:
         raise RuntimeError('Release commit is not present in the target repository')
-    run = os.environ.get('GITHUB_RUN_ID', '')
-    body = '\n'.join([
-        f'## 一加钱包适配 {version}', '',
-        '- 唯一目标：`com.finshell.wallet`。',
-        '- 自动合并上游更新并保留一加适配、模块界面、文案和本仓库更新源。',
-        '- 不含已撤回的钱包内封面实验功能。',
-        '- 编译、单元测试及既有证书签名检查通过后自动发布。',
-        '- 这是预发布测试包；云端检查不等于钱包真机换图验收。', '',
-        f'源码提交：`{target}`', f'构建记录：https://github.com/{repo}/actions/runs/{run}', '',
-        summary, '', 'SHA256：', '```text', f'{digest}  {apk.name}', '```',
-    ])
+    from release_notes import notes
+    body = notes(version)
     if not release:
         release = api('/releases', 'POST', {'tag_name': tag, 'target_commitish': target,
                       'name': f'卡面工坊 {version} · 一加适配预发布', 'body': body,

@@ -136,6 +136,33 @@ def report_conflict(sha: str, files: list[str]):
     create_issue(f"upstream sync conflict: {sha[:12]}", body)
 
 
+
+def record_release_notes(version, old, sha):
+    path = ROOT / ".github/release-notes.json"
+    entries = json.loads(path.read_text()) if path.exists() else {}
+    if version in entries:
+        return
+    subjects = git("log", "--reverse", "--format=%s", f"{old}..{sha}").splitlines()
+    changes = []
+    for subject in subjects:
+        if re.match(r"^(docs|ci|build|test|chore)(?:\([^)]*\))?[!:]", subject, re.I):
+            continue
+        clean = re.sub(r"^(feat|fix|perf|refactor|release)(?:\([^)]*\))?!?:\s*", "", subject, flags=re.I).strip()
+        clean = re.sub(r"^v?\d+\.\d+\.\d+\s*[:：-]?\s*", "", clean)
+        if clean and clean not in changes:
+            changes.append(clean)
+    if not changes:
+        changed = git("diff", "--name-only", old, sha).splitlines()
+        changes = ["更新项目说明与维护内容。" if all(x.endswith('.md') or x.startswith('docs/') for x in changed) else "同步上游源码更新。"]
+    entries[version] = {
+        "upstream_changes": changes[:12],
+        "adaptation_changes": [
+            "同步本次上游变更，保留一加钱包的卡片识别、卡面替换和图片同步适配。",
+            "保留模块四入口布局、关于页一加说明和本仓库更新源。"
+        ]
+    }
+    path.write_text(json.dumps(entries, ensure_ascii=False, indent=2) + "\n")
+
 def prepare() -> int:
     state = read_state()
     git("remote", "get-url", "origin")
@@ -171,6 +198,7 @@ def prepare() -> int:
         # Execute only current main's workflow/scripts; retain this adaptation's explicit upstream state.
         git("restore", "--source=origin/main", "--staged", "--worktree", "--", *TRUSTED_PATHS)
         STATE.write_text(json.dumps(branch_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        record_release_notes(branch_version, old, sha)
         check = subprocess.run([sys.executable, str(ROOT / "tools/ci/check_oneplus.py")], cwd=ROOT)
         if check.returncode:
             raise RuntimeError("existing adaptation failed fixed OnePlus checks")
@@ -205,6 +233,7 @@ def prepare() -> int:
     old_suffix = max([old_suffix] + tag_suffixes)
     new_version, code, suffix = next_version(base, base if old_suffix else "", old_suffix, current, highest_tag_code())
     apply_config(base, code, new_version)
+    record_release_notes(new_version, old, sha)
     check = subprocess.run([sys.executable, str(ROOT / "tools/ci/check_oneplus.py")], cwd=ROOT)
     if check.returncode:
         git("merge", "--abort", check=False)
