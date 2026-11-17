@@ -70,7 +70,14 @@ runs:
         VERSION: ${{ steps.metadata.outputs.version }}
       run: |
         APK='app/build/outputs/apk/debug/app-debug.apk'
+        # Always re-sign the completed APK explicitly: AGP debug-keystore discovery can vary with Runner configuration.
+        "$ANDROID_HOME/build-tools/37.0.0/apksigner" sign \
+          --ks "$HOME/.android/debug.keystore" --ks-key-alias androiddebugkey \
+          --ks-pass pass:android --key-pass pass:android \
+          --out "$RUNNER_TEMP/cardface-signed.apk" "$APK"
+        APK="$RUNNER_TEMP/cardface-signed.apk"
         "$ANDROID_HOME/build-tools/37.0.0/apksigner" verify --print-certs "$APK" > "$RUNNER_TEMP/cardface-certificate.txt"
+        cat "$RUNNER_TEMP/cardface-certificate.txt"
         grep -qi '62e7a1035526449f0c04f6e3045295bb92a114aaf9c125253d01e93a81e52062' "$RUNNER_TEMP/cardface-certificate.txt"
         mkdir -p .ci-output
         cp "$APK" ".ci-output/CardFace-${VERSION}.apk"
