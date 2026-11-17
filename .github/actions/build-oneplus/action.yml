@@ -106,6 +106,7 @@ runs:
           app/build/test-results/testDebugUnitTest/TEST-*.xml
           imaging/build/test-results/test/TEST-*.xml
         retention-days: 14
+        include-hidden-files: true
     - name: Stop build workers
       if: always()
       shell: bash
