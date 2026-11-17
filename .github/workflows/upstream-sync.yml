@@ -26,7 +26,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-      - name: Detect upstream and prepare OnePlus adaptation
+      - name: Import upstream snapshot and apply owner-maintained OnePlus adaptation
         id: sync
         run: python3 tools/ci/sync_upstream.py prepare
       - name: Compile and test adaptation

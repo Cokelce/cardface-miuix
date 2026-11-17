@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare an upstream sync branch; no build, push, merge-to-main, or release."""
+"""Import latest upstream source plus the latest owner-maintained OnePlus adaptation, without git merge."""
 from __future__ import annotations
 import argparse, json, os, re, subprocess, sys
 from publish_prerelease import release_assets_ready, retired
@@ -130,7 +130,7 @@ def managed_conflict(path):
 
 
 def report_conflict(sha: str, files: list[str]):
-    body = (f"上游同步 `{sha}` 在自动合并阶段发生冲突，脚本已 abort merge，保留目标工作树逻辑。\n\n"
+    body = (f"上游同步 `{sha}` 应用一加适配补丁时发生冲突，已回退未提交的源码导入，保留你仓库当前代码。\n\n"
             "受影响文件：\n" + "\n".join(f"- `{x}`" for x in files) +
             "\n\n请人工处理冲突后再运行构建验证；`upstream-state.json` 保持不变。")
     create_issue(f"upstream sync conflict: {sha[:12]}", body)
@@ -162,6 +162,25 @@ def record_release_notes(version, old, sha):
         ]
     }
     path.write_text(json.dumps(entries, ensure_ascii=False, indent=2) + "\n")
+
+def import_snapshot(old, sha):
+    """Return conflict paths after restoring the latest owner code on failure."""
+    exclusions = [":(exclude)" + entry for entry in TRUSTED_PATHS + UPSTREAM_CONFIG]
+    patch = subprocess.run(["git", "diff", "--binary", old, "origin/main", "--", ".", *exclusions],
+                           cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True).stdout
+    git("read-tree", "--reset", "-u", sha)
+    git("restore", "--source=origin/main", "--staged", "--worktree", "--", *TRUSTED_PATHS)
+    if patch:
+        applied = subprocess.run(["git", "apply", "--3way", "--index", "-"], input=patch,
+                                 cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if applied.returncode:
+            files = git("diff", "--name-only", "--diff-filter=U", check=False).splitlines()
+            git("read-tree", "--reset", "-u", "origin/main")
+            report_conflict(sha, files or ["adaptation patch did not apply cleanly"])
+            print(f"CONFLICT upstream={sha} files={','.join(files)}", file=sys.stderr)
+            return False
+    return True
+
 
 def prepare() -> int:
     state = read_state()
@@ -199,8 +218,12 @@ def prepare() -> int:
             print(f"Existing published adaptation preserved: {branch}")
             return 0
         git("switch", "-C", branch, f"origin/{branch}")
-        # Execute only current main's workflow/scripts; retain this adaptation's explicit upstream state.
-        git("restore", "--source=origin/main", "--staged", "--worktree", "--", *TRUSTED_PATHS)
+        # Recompute from the latest owner source even when resuming an unpublished candidate.
+        if not import_snapshot(old, sha):
+            return 2
+        existing_code = version_code(git("show", f"origin/{branch}:app/build.gradle.kts"))
+        base = branch_state["base_version"]
+        apply_config(base, max(existing_code, version_code(git("show", "origin/main:app/build.gradle.kts")) + 1), branch_version)
         STATE.write_text(json.dumps(branch_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         record_release_notes(branch_version, old, sha)
         check = subprocess.run([sys.executable, str(ROOT / "tools/ci/check_oneplus.py")], cwd=ROOT)
@@ -208,26 +231,16 @@ def prepare() -> int:
             raise RuntimeError("existing adaptation failed fixed OnePlus checks")
         emit(changed="true", existing="true", branch=branch, upstream_sha=sha, version=branch_version)
         return 0
-    # The branch is deterministic and starts at the target's origin/main.
+    # Import source snapshots; retain only this repository's commit history.
+    # Recompute the owner's adaptation patch from the latest origin/main on every update.
+    # Exclude README, automation/tooling and version settings from the adaptation patch.
     git("switch", "-c", branch, "origin/main")
-    merge = subprocess.run(["git", "merge", "--no-ff", "--no-commit", sha], cwd=ROOT, text=True, capture_output=True)
-    if merge.returncode:
-        files = git("diff", "--name-only", "--diff-filter=U", check=False).splitlines()
-        unmanaged = [name for name in files if not managed_conflict(name)]
-        if not files or unmanaged:
-            git("merge", "--abort", check=False)
-            report_conflict(sha, unmanaged or files)
-            print(f"CONFLICT upstream={sha} files={','.join(unmanaged or files)}", file=sys.stderr)
-            return 2
-        for name in files:
-            git("checkout", "--theirs" if name in UPSTREAM_CONFIG else "--ours", "--", name)
-            git("add", "--", name)
-    # Never execute or deploy an upstream change to our workflow, secrets handling or tools.
-    git("restore", "--source=origin/main", "--staged", "--worktree", "--", *TRUSTED_PATHS)
+    if not import_snapshot(old, sha):
+        return 2
     merged = git("show", f"{sha}:app/build.gradle.kts")
     base = parse_base_version(merged)
     if tuple(map(int, base.split("."))) < tuple(map(int, state["base_version"].split("."))):
-        git("merge", "--abort", check=False)
+        git("read-tree", "--reset", "-u", "origin/main")
         raise RuntimeError("upstream base version decreased; manual review required")
     current = version_code(git("show", "origin/main:app/build.gradle.kts"))
     # Main is deliberately not auto-merged: include already published prerelease suffixes.
@@ -240,8 +253,8 @@ def prepare() -> int:
     record_release_notes(new_version, old, sha)
     check = subprocess.run([sys.executable, str(ROOT / "tools/ci/check_oneplus.py")], cwd=ROOT)
     if check.returncode:
-        git("merge", "--abort", check=False)
-        raise RuntimeError("check_oneplus.py failed; merge aborted and state unchanged")
+        git("read-tree", "--reset", "-u", "origin/main")
+        raise RuntimeError("check_oneplus.py failed; snapshot import rolled back and state unchanged")
     write_state(sha, branch, new_version, suffix, base)
     emit(changed="true", branch=branch, upstream_sha=sha, version=new_version)
     return 0
@@ -268,7 +281,7 @@ def report(message: str):
 def main():
     ap = argparse.ArgumentParser(description="CardFace upstream sync CLI")
     sub = ap.add_subparsers(dest="cmd")
-    sub.add_parser("prepare", help="fetch, fast-forward-check, merge, bump, state, static-check (default)")
+    sub.add_parser("prepare", help="fetch snapshots, apply current fork adaptation, bump, check (default)")
     p = sub.add_parser("publish", help="create a deduplicated PR after workflow pushes the branch")
     p.add_argument("--branch", required=True); p.add_argument("--version", required=True)
     r = sub.add_parser("report", help="create an issue containing a failure/change report")

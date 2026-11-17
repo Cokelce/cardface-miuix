@@ -134,6 +134,26 @@ class GitSyncTests(unittest.TestCase):
         self.assertEqual(self.prepare(), 0)
         self.assertEqual((self.root / 'README.md').read_text(), custom)
 
+    def test_latest_owner_code_is_applied_without_upstream_merge_parent(self):
+        adaptation = 'app/src/main/kotlin/com/dsh/miuix/cardface/xposed/OwnerAddedHook.kt'
+        self.put(adaptation, 'fun latestOwnerHook() = "owner-submitted-later"\n')
+        git(self.root, 'add', adaptation)
+        git(self.root, 'commit', '-qm', 'owner uploads another OnePlus adapter')
+        owner_tip = git(self.root, 'rev-parse', 'HEAD')
+        git(self.root, 'push', '-q', 'origin', 'HEAD:main')
+        upstream_new = 'app/src/main/kotlin/com/dsh/miuix/cardface/ui/UpstreamNewFeature.kt'
+        upstream_tip = self.change_upstream({upstream_new: 'fun upstreamFeature() = true\n'})
+        self.assertEqual(self.prepare(), 0)
+        self.assertIn('owner-submitted-later', (self.root / adaptation).read_text())
+        self.assertIn('upstreamFeature', (self.root / upstream_new).read_text())
+        self.assertFalse((self.root / '.git/MERGE_HEAD').exists())
+        git(self.root, 'add', '-A')
+        git(self.root, 'commit', '-qm', 'snapshot import and owner adaptation')
+        parents = git(self.root, 'show', '-s', '--format=%P', 'HEAD').split()
+        self.assertEqual(parents, [owner_tip])
+        self.assertNotIn(upstream_tip, parents)
+        self.assertEqual(git(self.root, 'ls-remote', 'upstream', 'refs/heads/main').split()[0], upstream_tip)
+
     def test_upstream_app_version_conflict(self):
         self.change_upstream({'app/build.gradle.kts': 'applicationId = "io.github.miambao.cardface"\nversionCode = 25\nversionName = "2.1.0"\n// upstream-new-dependency\n', 'app/src/main/kotlin/com/dsh/miuix/cardface/core/BuildInfo.kt': 'INTERNAL_VERSION = "2.1.0.25"\n'})
         self.assertEqual(self.prepare(), 0)
@@ -171,6 +191,16 @@ class GitSyncTests(unittest.TestCase):
         self.assertIn('changed=true', self.out.read_text())
         self.assertIn('version=2.0.0-oneplus.6', self.out.read_text())
         self.assertEqual(json.loads((self.root / '.github/upstream-state.json').read_text())['commit'], sha)
+
+    def test_resumed_candidate_uses_latest_owner_adapter(self):
+        _, _, _ = self.existing_adaptation()
+        rel = 'app/src/main/kotlin/com/dsh/miuix/cardface/xposed/LaterOwnerHook.kt'
+        self.put(rel, 'fun laterOwnerHook() = "latest"\n')
+        git(self.root, 'add', rel)
+        git(self.root, 'commit', '-qm', 'owner adapter added after candidate creation')
+        git(self.root, 'push', '-q', 'origin', 'HEAD:main')
+        self.assertEqual(self.prepare(), 0)
+        self.assertIn('laterOwnerHook', (self.root / rel).read_text())
 
     def test_existing_published_branch_skips_build(self):
         _, branch, commit = self.existing_adaptation()
