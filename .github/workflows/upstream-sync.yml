@@ -42,10 +42,17 @@ jobs:
           SYNC_VERSION: ${{ steps.sync.outputs.version }}
         run: |
           git add -A
-          git diff --cached --quiet && exit 0
-          git commit -m "chore: adapt upstream as ${SYNC_VERSION}"
-          git push origin "HEAD:refs/heads/${SYNC_BRANCH}"
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: adapt upstream as ${SYNC_VERSION}"
+            git push origin "HEAD:refs/heads/${SYNC_BRANCH}"
+          fi
           python3 tools/ci/sync_upstream.py publish --branch "$SYNC_BRANCH" --version "$SYNC_VERSION"
+      - name: Publish signed prerelease without merging main
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          SYNC_VERSION: ${{ steps.sync.outputs.version }}
+        run: |
+          python3 tools/ci/publish_prerelease.py --version "$SYNC_VERSION" --target "$(git rev-parse HEAD)"
       - name: Report failure
         if: failure()
         run: |

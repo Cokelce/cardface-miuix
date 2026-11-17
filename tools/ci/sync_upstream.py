@@ -2,6 +2,7 @@
 """Prepare an upstream sync branch; no build, push, merge-to-main, or release."""
 from __future__ import annotations
 import argparse, json, os, re, subprocess, sys
+from publish_prerelease import release_assets_ready
 from pathlib import Path
 from urllib import request, error, parse
 
@@ -154,9 +155,26 @@ def prepare() -> int:
     branch = f"automation/upstream-{sha[:12]}"
     existing = git("ls-remote", "--heads", "origin", f"refs/heads/{branch}")
     if existing:
-        publish(branch, state.get("version", "upstream update"))
-        emit(changed="false")
-        print(f"Existing sync branch preserved: {branch}")
+        git("fetch", "origin", f"refs/heads/{branch}:refs/remotes/origin/{branch}")
+        # A previously built PR can still need its first prerelease; resume rather than silently skip.
+        branch_state = json.loads(git("show", f"origin/{branch}:.github/upstream-state.json"))
+        branch_version = branch_state.get("version", "")
+        if branch_state.get("commit") != sha:
+            raise RuntimeError("existing branch has mismatched upstream state; review required")
+        published = api("GET", "/releases?per_page=100")
+        if any(r.get("tag_name") == "v" + branch_version and release_assets_ready(r, branch_version) for r in published):
+            publish(branch, branch_version)
+            emit(changed="false")
+            print(f"Existing published adaptation preserved: {branch}")
+            return 0
+        git("switch", "-C", branch, f"origin/{branch}")
+        # Execute only current main's workflow/scripts; retain this adaptation's explicit upstream state.
+        git("restore", "--source=origin/main", "--staged", "--worktree", "--", *TRUSTED_PATHS)
+        STATE.write_text(json.dumps(branch_state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        check = subprocess.run([sys.executable, str(ROOT / "tools/ci/check_oneplus.py")], cwd=ROOT)
+        if check.returncode:
+            raise RuntimeError("existing adaptation failed fixed OnePlus checks")
+        emit(changed="true", existing="true", branch=branch, upstream_sha=sha, version=branch_version)
         return 0
     # The branch is deterministic and starts at the target's origin/main.
     git("switch", "-c", branch, "origin/main")
@@ -180,8 +198,12 @@ def prepare() -> int:
         git("merge", "--abort", check=False)
         raise RuntimeError("upstream base version decreased; manual review required")
     current = version_code(git("show", "origin/main:app/build.gradle.kts"))
-    new_version, code, suffix = next_version(base, state.get("base_version", ""),
-                                               int(state.get("suffix", 0)), current, highest_tag_code())
+    # Main is deliberately not auto-merged: include already published prerelease suffixes.
+    tag_suffixes = [int(match[1]) for tag in git("tag", "--format=%(refname:short)").splitlines()
+                    if (match := re.fullmatch(r"v?" + re.escape(base) + r"-oneplus\.(\d+)", tag))]
+    old_suffix = int(state.get("suffix", 0)) if state.get("base_version") == base else 0
+    old_suffix = max([old_suffix] + tag_suffixes)
+    new_version, code, suffix = next_version(base, base if old_suffix else "", old_suffix, current, highest_tag_code())
     apply_config(base, code, new_version)
     check = subprocess.run([sys.executable, str(ROOT / "tools/ci/check_oneplus.py")], cwd=ROOT)
     if check.returncode:

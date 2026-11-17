@@ -1,3 +1,6 @@
+import sys
+from pathlib import Path as _Path
+sys.path.insert(0, str(_Path(__file__).resolve().parent))
 """Offline git/merge integration tests; only local temporary remotes, no GitHub writes."""
 import importlib.util
 import json
@@ -47,7 +50,7 @@ class GitSyncTests(unittest.TestCase):
         }
         for path, text in files.items():
             self.put(path, text)
-        for name in ('sync_upstream.py', 'check_oneplus.py'):
+        for name in ('sync_upstream.py', 'check_oneplus.py', 'publish_prerelease.py'):
             self.put('tools/ci/' + name, (DEPLOY / 'tools/ci' / name).read_text())
         git(self.root, 'add', '-A')
         git(self.root, 'commit', '-qm', 'synthetic upstream base')
@@ -96,6 +99,8 @@ class GitSyncTests(unittest.TestCase):
     def fake_api(self, verb, path, payload=None):
         self.calls.append((verb, path, payload))
         if verb == 'GET':
+            if path.startswith('/releases'):
+                return getattr(self, 'releases', [])
             return [{'html_url': 'https://example.invalid/pr/1'}] if path.startswith('/pulls') else []
         return {'number': 1}
 
@@ -133,13 +138,43 @@ class GitSyncTests(unittest.TestCase):
         self.assertEqual((self.root / '.github/upstream-state.json').read_bytes(), before)
         self.assertTrue(any(verb == 'POST' and path == '/issues' for verb, path, _ in self.calls))
 
-    def test_existing_branch_no_force(self):
+    def existing_adaptation(self):
         sha = self.change_upstream({'README.md': 'another update\n'})
         branch = 'automation/upstream-' + sha[:12]
+        git(self.root, 'checkout', '-q', '-b', branch)
+        self.put('.github/upstream-state.json', json.dumps({'commit': sha, 'base_version': '2.0.0', 'suffix': 6, 'version': '2.0.0-oneplus.6'}))
+        self.put('app/build.gradle.kts', (self.root / 'app/build.gradle.kts').read_text().replace('oneplus.5', 'oneplus.6').replace('versionCode = 51', 'versionCode = 52'))
+        git(self.root, 'add', '-A')
+        git(self.root, 'commit', '-qm', 'previously prepared adaptation')
+        commit = git(self.root, 'rev-parse', 'HEAD')
         git(self.root, 'push', '-q', 'origin', f'HEAD:refs/heads/{branch}')
+        git(self.root, 'checkout', '-q', 'main')
+        git(self.root, 'branch', '-D', branch)
+        return sha, branch, commit
+
+    def test_existing_branch_missing_release_resumes_without_force(self):
+        sha, branch, commit = self.existing_adaptation()
         self.assertEqual(self.prepare(), 0)
-        self.assertEqual(git(self.root, 'ls-remote', 'origin', f'refs/heads/{branch}').split()[0], self.main)
+        self.assertEqual(git(self.root, 'ls-remote', 'origin', f'refs/heads/{branch}').split()[0], commit)
+        self.assertIn('changed=true', self.out.read_text())
+        self.assertIn('version=2.0.0-oneplus.6', self.out.read_text())
+        self.assertEqual(json.loads((self.root / '.github/upstream-state.json').read_text())['commit'], sha)
+
+    def test_existing_published_branch_skips_build(self):
+        _, branch, commit = self.existing_adaptation()
+        self.releases = [{'tag_name': 'v2.0.0-oneplus.6', 'draft': False, 'assets': [
+            {'name': 'CardFace-2.0.0-oneplus.6.apk', 'state': 'uploaded', 'size': 1200},
+            {'name': 'CardFace-2.0.0-oneplus.6.apk.sha256', 'state': 'uploaded', 'size': 95}]}]
+        self.assertEqual(self.prepare(), 0)
         self.assertIn('changed=false', self.out.read_text())
+        self.assertEqual(git(self.root, 'ls-remote', 'origin', f'refs/heads/{branch}').split()[0], commit)
+
+    def test_unmerged_published_tag_suffix_is_incremented(self):
+        self.change_upstream({'README.md': 'third update\n'})
+        git(self.root, 'tag', 'v2.0.0-oneplus.8')
+        git(self.root, 'push', '-q', 'origin', 'v2.0.0-oneplus.8')
+        self.assertEqual(self.prepare(), 0)
+        self.assertIn('version=2.0.0-oneplus.9', self.out.read_text())
 
 
 if __name__ == '__main__':
