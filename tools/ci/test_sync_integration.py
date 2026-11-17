@@ -114,13 +114,25 @@ class GitSyncTests(unittest.TestCase):
         self.assertEqual(self.out.read_text(), 'changed=false\n')
 
     def test_readme_change(self):
+        original_readme = (self.root / 'README.md').read_text()
         sha = self.change_upstream({'README.md': 'updated upstream\n', '.github/workflows/sync.yml': '# untrusted upstream automation\n'})
         self.assertEqual(self.prepare(), 0)
         self.assertIn('changed=true', self.out.read_text())
+        self.assertEqual((self.root / 'README.md').read_text(), original_readme)
         self.assertIn('version=2.0.0-oneplus.6', self.out.read_text())
         self.assertEqual((self.root / '.github/workflows/sync.yml').read_text(), '# trusted workflow\n')
         self.assertIn('versionCode = 52', (self.root / 'app/build.gradle.kts').read_text())
         self.assertEqual(json.loads((self.root / '.github/upstream-state.json').read_text())['commit'], sha)
+
+    def test_latest_fork_readme_wins_even_on_conflict(self):
+        custom = '小米智能卡、一加钱包\nhttps://github.com/Cokelce/cardface-miuix/releases/latest\n'
+        self.put('README.md', custom)
+        git(self.root, 'add', 'README.md')
+        git(self.root, 'commit', '-qm', 'user updates fork readme')
+        git(self.root, 'push', '-q', 'origin', 'HEAD:main')
+        self.change_upstream({'README.md': 'upstream replacement without fork customizations\n'})
+        self.assertEqual(self.prepare(), 0)
+        self.assertEqual((self.root / 'README.md').read_text(), custom)
 
     def test_upstream_app_version_conflict(self):
         self.change_upstream({'app/build.gradle.kts': 'applicationId = "io.github.miambao.cardface"\nversionCode = 25\nversionName = "2.1.0"\n// upstream-new-dependency\n', 'app/src/main/kotlin/com/dsh/miuix/cardface/core/BuildInfo.kt': 'INTERNAL_VERSION = "2.1.0.25"\n'})

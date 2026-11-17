@@ -7,7 +7,7 @@
 <h1 align="center">卡面工坊</h1>
 
 <p align="center">
-  给小米智能卡换一张喜欢的卡面<br/>
+  给小米智能卡、一加钱包换一张喜欢的卡面<br/>
   <sub>LSPosed 模块 · Miuix（HyperOS）界面 · Lanczos3 图像管线</sub>
 </p>
 
@@ -25,7 +25,7 @@
 
 ## 这是什么
 
-「卡面工坊」是一个给小米智能卡换卡面的 LSPosed 模块。不用改系统，把你喜欢的画、角色、照片，变成卡包里每天都会看到的那一张卡。
+「卡面工坊」是一个给小米智能卡、一加钱包换卡面的 LSPosed 模块。不用改系统，把你喜欢的画、角色、照片，变成卡包里每天都会看到的那一张卡。
 
 这个项目最早是「DIY NFC 卡面图片」的界面与体验重构：原版功能没问题，但 UI 比较粗糙，风格也旧了。这次按 Miuix 的 HyperOS 风格把整套界面重做了一遍，图片缩放、裁剪这些细节也重新写了一次。
 
@@ -67,13 +67,13 @@
 
 - Android 8.0+（minSdk 26，targetSdk 36，compileSdk 37）
 - 已 root，并安装 **LSPosed**（libxposed API 101+）
-- 卡包：小米智能卡（`com.miui.tsmclient`）
+- 卡包：小米智能卡（`com.miui.tsmclient`）、一加钱包（`com.finshell.wallet`）；本分支仅维护一加钱包适配。
 - 参考验证环境：Xiaomi 15 Pro / HyperOS 4 / LSPosed 2.2.1 + 小米智能卡
 
 ## 安装与使用
 
 1. 下载 Release 里的 `CardFace-v2.0.0.apk` 并安装。
-2. 在 LSPosed 里启用「卡面工坊」，作用域勾选：小米智能卡 一加钱包。
+2. 在 LSPosed 里启用「卡面工坊」，作用域：小米智能卡、一加钱包；本分支勾选一加钱包（`com.finshell.wallet`）。
 3. 打开卡包，把卡面浏览一遍，让 hook 记录到卡面地址。
 4. 回到「卡面工坊」→ 点一张卡面 → 从相册 / 在线卡面库选图 → 裁剪 / 加标志 → 保存并应用。
 5. 在设置里点「一键重启卡包」，卡面即生效。

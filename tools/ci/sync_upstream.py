@@ -120,7 +120,7 @@ def emit(**values):
             out.write(lines)
 
 
-TRUSTED_PATHS = [".github", "tools/ci", "build.gradle.kts", "gradle.properties", "settings.gradle.kts", "gradlew", "gradle", ".gitignore"]
+TRUSTED_PATHS = ["README.md", ".github", "tools/ci", "build.gradle.kts", "gradle.properties", "settings.gradle.kts", "gradlew", "gradle", ".gitignore"]
 UPSTREAM_CONFIG = ["app/build.gradle.kts", "app/src/main/kotlin/com/dsh/miuix/cardface/core/BuildInfo.kt"]
 
 

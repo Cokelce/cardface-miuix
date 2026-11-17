@@ -31,6 +31,7 @@ class MergePolicyTests(unittest.TestCase):
     def test_only_automation_and_version_files_are_managed(self):
         self.assertTrue(m.managed_conflict(".github/workflows/new.yml"))
         self.assertTrue(m.managed_conflict("app/build.gradle.kts"))
+        self.assertTrue(m.managed_conflict("README.md"))
         self.assertFalse(m.managed_conflict("app/src/main/kotlin/com/dsh/miuix/cardface/xposed/HookEngine.kt"))
     def test_codegen_output(self):
         import tempfile, os
