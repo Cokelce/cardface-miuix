@@ -46,7 +46,7 @@ class GitSyncTests(unittest.TestCase):
             'build.gradle.kts': '// toolchain\n', 'settings.gradle.kts': '// repositories\n',
             'gradle.properties': 'android.useAndroidX=true\n', 'gradlew': '#!/bin/sh\n',
             'gradle/wrapper/gradle-wrapper.properties': 'distributionUrl=gradle.zip\n',
-            '.github/workflows/sync.yml': '# trusted workflow\n', '.gitignore': '__pycache__/\n',
+            '.github/workflows/sync.yml': '# trusted workflow\n', '.github/release-notes.json': json.dumps({'2.0.0-oneplus.5': {'upstream_changes':['基线更新。'], 'adaptation_changes':['一加钱包适配。']}}), '.gitignore': '__pycache__/\n',
         }
         for path, text in files.items():
             self.put(path, text)

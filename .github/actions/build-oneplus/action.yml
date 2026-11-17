@@ -33,6 +33,7 @@ runs:
       run: |
         python3 tools/ci/check_oneplus.py
         python3 -m unittest discover -s tools/ci -p 'test_*.py' -v
+        python3 tools/ci/release_notes.py --version "$(sed -n 's/.*versionName = \"\([^\"]*\)\".*/\1/p' app/build.gradle.kts | head -n1)"
     - name: Install Android SDK
       shell: bash
       run: |
