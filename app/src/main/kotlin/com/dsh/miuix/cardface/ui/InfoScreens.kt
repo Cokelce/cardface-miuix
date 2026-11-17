@@ -968,10 +968,8 @@ fun VersionScreen(
                         if (updateProgress >= 0) return@TextButton
                         updateProgress = 0
                         scope.launch {
-                            val apk = withContext(Dispatchers.IO) {
-                                com.dsh.miuix.cardface.core.UpdateInstaller.download(context, update.downloadUrl) { p ->
-                                    updateProgress = p
-                                }
+                            val apk = com.dsh.miuix.cardface.core.VerifiedUpdateDownload.download(context, update) { p ->
+                                scope.launch { updateProgress = p }
                             }
                             updateProgress = -1
                             if (apk == null) {

@@ -24,6 +24,14 @@
         android:theme="@style/Theme.CardFace">
 
         <activity
+            android:name=".UpdateInstallActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|uiMode"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.CardFace" />
+        <receiver android:name=".core.UpdateInstallReceiver" android:exported="false" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
