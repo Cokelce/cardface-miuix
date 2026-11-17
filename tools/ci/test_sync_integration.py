@@ -154,6 +154,17 @@ class GitSyncTests(unittest.TestCase):
         self.assertNotIn(upstream_tip, parents)
         self.assertEqual(git(self.root, 'ls-remote', 'upstream', 'refs/heads/main').split()[0], upstream_tip)
 
+    def test_owner_build_dependencies_survive_snapshot_import(self):
+        rel = 'app/build.gradle.kts'
+        self.put(rel, (self.root / rel).read_text() + '\n// owner-custom-dependency\n')
+        git(self.root, 'add', rel)
+        git(self.root, 'commit', '-qm', 'owner adds build dependency')
+        git(self.root, 'push', '-q', 'origin', 'HEAD:main')
+        self.change_upstream({'README.md': 'next upstream docs\n'})
+        self.assertEqual(self.prepare(), 0)
+        self.assertIn('owner-custom-dependency', (self.root / rel).read_text())
+        self.assertIn('io.github.miambao.cardface.oneplus', (self.root / rel).read_text())
+
     def test_upstream_app_version_conflict(self):
         self.change_upstream({'app/build.gradle.kts': 'applicationId = "io.github.miambao.cardface"\nversionCode = 25\nversionName = "2.1.0"\n// upstream-new-dependency\n', 'app/src/main/kotlin/com/dsh/miuix/cardface/core/BuildInfo.kt': 'INTERNAL_VERSION = "2.1.0.25"\n'})
         self.assertEqual(self.prepare(), 0)

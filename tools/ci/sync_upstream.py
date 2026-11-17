@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Import latest upstream source plus the latest owner-maintained OnePlus adaptation, without git merge."""
 from __future__ import annotations
-import argparse, json, os, re, subprocess, sys
+import argparse, json, os, re, subprocess, sys, tempfile
 from publish_prerelease import release_assets_ready, retired
 from pathlib import Path
 from urllib import request, error, parse
@@ -165,9 +165,30 @@ def record_release_notes(version, old, sha):
 
 def import_snapshot(old, sha):
     """Return conflict paths after restoring the latest owner code on failure."""
-    exclusions = [":(exclude)" + entry for entry in TRUSTED_PATHS + UPSTREAM_CONFIG]
-    patch = subprocess.run(["git", "diff", "--binary", old, "origin/main", "--", ".", *exclusions],
-                           cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True).stdout
+    # Normalize only identity/version fields before making the owner's patch.
+    # Preserve owner-added dependencies and other app/build.gradle changes as adaptation code.
+    folder = ROOT / '.ci-output'
+    folder.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='snapshot-index-', dir=folder) as temporary:
+        env = dict(os.environ, GIT_INDEX_FILE=str(Path(temporary) / 'index'))
+        def index_git(*args, data=None):
+            return subprocess.run(['git', *args], cwd=ROOT, env=env, input=data,
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True).stdout
+        index_git('read-tree', 'origin/main')
+        for name in UPSTREAM_CONFIG:
+            baseline = git('show', f'{old}:{name}')
+            current = git('show', f'origin/main:{name}')
+            patterns = ([r'applicationId\s*=\s*"[^"\n]+"', r'versionCode\s*=\s*\d+', r'versionName\s*=\s*"[^"\n]+"']
+                        if name == 'app/build.gradle.kts' else [r'INTERNAL_VERSION\s*=\s*"[^"\n]+"'])
+            for pattern in patterns:
+                match = re.search(pattern, baseline)
+                if match:
+                    current = re.sub(pattern, lambda _: match.group(0), current, count=1)
+            blob = index_git('hash-object', '-w', '--stdin', data=(current + '\n').encode()).decode().strip()
+            mode = git('ls-tree', 'origin/main', '--', name).split()[0]
+            index_git('update-index', '--add', '--cacheinfo', f'{mode},{blob},{name}')
+        exclusions = [':(exclude)' + entry for entry in TRUSTED_PATHS]
+        patch = index_git('diff', '--cached', '--binary', old, '--', '.', *exclusions)
     git("read-tree", "--reset", "-u", sha)
     git("restore", "--source=origin/main", "--staged", "--worktree", "--", *TRUSTED_PATHS)
     if patch:
