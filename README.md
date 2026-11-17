@@ -1,4 +1,4 @@
-> 本分支为 **一加钱包适配版**，唯一目标 `com.finshell.wallet`。自动同步与构建说明见 [一加适配自动化](docs/ONEPLUS_AUTOMATION.md)。上游项目为 [MiamBao/cardface-miuix](https://github.com/MiamBao/cardface-miuix)，原项目说明和许可证保留如下。
+~> 本分支为 **一加钱包适配版**，唯一目标 `com.finshell.wallet`。自动同步与构建说明见 [一加适配自动化](docs/ONEPLUS_AUTOMATION.md)。上游项目为 [MiamBao/cardface-miuix](https://github.com/MiamBao/cardface-miuix)，原项目说明和许可证保留如下。
 
 <p align="center">
   <img src="docs/icon.png" alt="卡面工坊" width="112"/>
@@ -73,7 +73,7 @@
 ## 安装与使用
 
 1. 下载 Release 里的 `CardFace-v2.0.0.apk` 并安装。
-2. 在 LSPosed 里启用「卡面工坊」，作用域勾选：小米智能卡。
+2. 在 LSPosed 里启用「卡面工坊」，作用域勾选：小米智能卡 一加钱包。
 3. 打开卡包，把卡面浏览一遍，让 hook 记录到卡面地址。
 4. 回到「卡面工坊」→ 点一张卡面 → 从相册 / 在线卡面库选图 → 裁剪 / 加标志 → 保存并应用。
 5. 在设置里点「一键重启卡包」，卡面即生效。
