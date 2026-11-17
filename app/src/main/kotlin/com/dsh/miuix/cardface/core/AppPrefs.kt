@@ -1,5 +1,6 @@
 package com.dsh.miuix.cardface.core
 
+import com.dsh.miuix.cardface.xposed.UrlMapper
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.compose.runtime.getValue
@@ -23,7 +24,7 @@ enum class SyncMode(val key: String, val label: String) {
     }
 }
 
-class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
+class AppPrefs(context: Context) {
 
     private val appContext = context.applicationContext
     private val rawSettings: SharedPreferences =
@@ -87,6 +88,26 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
         get() = settings.getBoolean(KEY_DEV_MODE, false)
         set(v) = settings.edit().putBoolean(KEY_DEV_MODE, v).apply().also { touch() }
 
+    /** 保存到图库前是否先弹命名框（从相册/卡面库选图后）。 */
+    var askNameOnGallerySave: Boolean
+        get() = settings.getBoolean("ask_name_gallery", false)
+        set(v) = settings.edit().putBoolean("ask_name_gallery", v).apply().also { touch() }
+
+    /** 省流量模式：Wi-Fi 加载原图，移动网络用压缩缩略图。 */
+    var dataSaver: Boolean
+        get() = settings.getBoolean("data_saver", true)
+        set(v) = settings.edit().putBoolean("data_saver", v).apply().also { touch() }
+
+    /** 卡面库首次打开时是否已经提示过省流量开关。 */
+    var dataSaverPromptShown: Boolean
+        get() = settings.getBoolean("data_saver_prompt_v1", false)
+        set(v) = settings.edit().putBoolean("data_saver_prompt_v1", v).apply()
+
+    /** 是否在首页/编辑页显示「卡面库」入口（第三方在线图片源，可关闭）。 */
+    var catalogEnabled: Boolean
+        get() = settings.getBoolean("catalog_enabled", true)
+        set(v) = settings.edit().putBoolean("catalog_enabled", v).apply().also { touch() }
+
     /** 启动时自动检查 GitHub 最新版本（可在关于页关掉）。 */
     var autoCheckUpdate: Boolean
         get() = settings.getBoolean("auto_check_update", true)
@@ -149,6 +170,103 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
     fun allCardUrls(): List<String> =
         urls.getStringSet(KEY_ALL_CARD_URLS, emptySet()).orEmpty().toList().sorted()
 
+    /** 一次性把银行卡里的 3 张广告/示意图卡面加入黑名单，不再出现在选图界面。 */
+    fun hidePromoBankFacesOnce() {
+        if (settings.getBoolean("hidden_promo_bank_faces_v1", false)) return
+        val promo = setOf(
+            "https://f1.market.xiaomi.com/mfc/thumbnail/webp/w1080h1920q80/NextPay/049d37450fbc04115108de552ccb433d13f7f23d6",
+            "https://f1.market.xiaomi.com/mfc/thumbnail/webp/w1080h1920q80/NextPay/09561b469c2be4ad0177235193bf781920df7eef3",
+            "https://f1.market.xiaomi.com/mfc/thumbnail/webp/w1080h1920q80/NextPay/0cb94e4a8a0644d47318a94b224142d71846f74d0",
+        )
+        val next = blacklistedUrls() + promo
+        urls.edit().putStringSet(KEY_BLACK_CARD_URLS, next).apply()
+        settings.edit().putBoolean("hidden_promo_bank_faces_v1", true).apply()
+        RemotePrefsBridge.syncGroup(appContext, "card_urls")
+        touch()
+    }
+
+    /** 备份恢复：整体写入设置（保留设备相关键）。 */
+    fun restoreSettings(values: Map<String, Any?>) {
+        val e = rawSettings.edit().clear()
+        values.forEach { (k, v) ->
+            when (v) {
+                is Boolean -> e.putBoolean(k, v)
+                is String -> e.putString(k, v)
+                is Int -> e.putInt(k, v)
+                is Long -> e.putLong(k, v)
+            }
+        }
+        val revision = maxOf(System.currentTimeMillis(), rawSettings.getLong("mapping_revision", 0L) + 1)
+        e.putLong("mapping_revision", revision)
+        e.apply()
+        touch()
+        syncRestoredState()
+    }
+
+    fun restoreUrls(urls: Set<String>) {
+        rawUrls.edit().putStringSet("all_card_url_set", urls).apply()
+        touch()
+        syncCardUrlsToRemote()
+    }
+
+    fun restoreNames(names: Map<String, String>) {
+        val e = names().edit().clear()
+        names.forEach { (k, v) -> e.putString(k, v) }
+        e.apply()
+        val detected = detectedNames.edit().clear()
+        names.forEach { (k, v) -> detected.putString(k, v) }
+        detected.apply()
+        touch()
+        syncDetectedNamesToRemote()
+    }
+
+    private fun syncRestoredState() {
+        RemotePrefsBridge.syncGroup(appContext, "settings")
+        syncCardUrlsToRemote()
+        syncDetectedNamesToRemote()
+        syncMetadataToRemote()
+        SnapshotSync.request(appContext)
+    }
+
+    private fun syncCardUrlsToRemote() = RemotePrefsBridge.syncGroup(appContext, "card_urls")
+    private fun syncDetectedNamesToRemote() = RemotePrefsBridge.syncGroup(appContext, "detected_names")
+
+    private fun syncMetadataToRemote() {
+        listOf("card_sources", "asset_origins", "replacement_assets", "owned_cards", "apply_state", "runtime_health")
+            .forEach { RemotePrefsBridge.syncGroup(appContext, it) }
+    }
+
+    private fun names() = appContext.getSharedPreferences("card_names", Context.MODE_PRIVATE)
+
+    private val detectedNames: SharedPreferences = appContext.getSharedPreferences("detected_names", Context.MODE_PRIVATE)
+    private val replacementAssets: SharedPreferences = appContext.getSharedPreferences("replacement_assets", Context.MODE_PRIVATE)
+
+    fun detectedName(url: String): String? = UrlMapper.lookupMapping(url, detectedNames.all.mapNotNull { (k, v) ->
+        CardNameResolver.clean(v as? String)?.let { k to it }
+    }.toMap()) ?: runCatching { val snapshot = ownedSnapshot(); OwnedCardPolicy.snapshotNames(snapshot)[url] }.getOrNull()
+
+    fun isReplacementMaterial(url: String, mappings: Map<String, String> = mappingPairs()): Boolean =
+        ReplacementAssets.isKnown(url, mappings, replacementAssets.all.keys,
+            appContext.getSharedPreferences("asset_origins", Context.MODE_PRIVATE).all.keys)
+
+    @Synchronized fun rememberReplacementMaterial(asset: String) {
+        replacementAssets.edit().putBoolean(ReplacementAssets.key(asset), true).commit()
+    }
+
+    private fun ownedSnapshot(): String? = appContext.getSharedPreferences("owned_cards", Context.MODE_PRIVATE).getString("snapshot", null)
+    fun ownedCardUrls(): Set<String> = OwnedCardPolicy.snapshotUrls(ownedSnapshot())
+    private fun ownedDisplayName(url: String): String? = OwnedCardPolicy.snapshotNames(ownedSnapshot())[url]
+
+    private fun sourceGroups(): List<Set<String>> = appContext.getSharedPreferences("card_sources", Context.MODE_PRIVATE).all.values.mapNotNull { v ->
+        runCatching { val a = org.json.JSONArray(v as String); (0 until a.length()).map { a.getString(it) }.toSet() }.getOrNull()
+    }
+    fun effectiveMappings(): Map<String, String> = CardSourceIndex.expand(mappingPairs(), sourceGroups())
+    fun mutationKeys(url: String, mappings: Map<String, String> = mappingPairs()): Set<String> {
+        val group = sourceGroups().filter { url in it }.flatten().toSet()
+        val matching = mappings.filterKeys { it in group || CardIdentity.key(it) == CardIdentity.key(url) }
+        return if (matching.isNotEmpty() && matching.values.distinct().size == 1) matching.keys + url else MappingPolicy.mutationKeys(url, mappings)
+    }
+
     fun blacklistedUrls(): Set<String> =
         urls.getStringSet(KEY_BLACK_CARD_URLS, emptySet()).orEmpty().toSet()
 
@@ -169,76 +287,39 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
     /** 返回所有可替换的卡面（除去黑名单）。 */
     /** 卡面自定义名称，单独一个 prefs，避免和 URL 集合混在一起。 */
     private val names: android.content.SharedPreferences =
-        context.getSharedPreferences("card_names", android.content.Context.MODE_PRIVATE)
-
-    private val detectedNames: SharedPreferences =
-        appContext.getSharedPreferences("detected_names", Context.MODE_PRIVATE)
-
-    fun detectedName(url: String): String? {
-        val all = detectedNames.all.mapNotNull { (key, value) ->
-            CardNameResolver.clean(value as? String)?.let { key to it }
-        }.toMap()
-        return com.dsh.miuix.cardface.xposed.UrlMapper.lookupMapping(url, all)
-    }
+        appContext.getSharedPreferences("card_names", android.content.Context.MODE_PRIVATE)
 
     fun customName(url: String): String? = names.getString(url, null)?.takeIf { it.isNotBlank() }
-        ?: names.all.entries.firstOrNull { CardIdentity.key(it.key) == CardIdentity.key(url) }
-            ?.value?.let { it as? String }?.takeIf { it.isNotBlank() }
+        ?: names.all.entries.firstOrNull { CardIdentity.key(it.key) == CardIdentity.key(url) }?.value.let { it as? String }?.takeIf { it.isNotBlank() }
 
     fun setCustomName(url: String, name: String?) {
+        val keys = mutationKeys(url)
         names.edit().apply {
-            if (name.isNullOrBlank()) remove(url) else putString(url, name.trim())
+            keys.forEach { key -> if (name.isNullOrBlank()) remove(key) else putString(key, name.trim()) }
         }.apply()
         touch()
     }
 
-    private val replacementAssets = appContext.getSharedPreferences("replacement_assets", Context.MODE_PRIVATE)
-
-    fun isReplacementMaterial(url: String, mappings: Map<String, String> = mappingPairs()): Boolean =
-        ReplacementAssets.isKnown(url, mappings, replacementAssets.all.keys,
-            appContext.getSharedPreferences("asset_origins", Context.MODE_PRIVATE).all.keys)
-
-    @Synchronized
-    fun rememberReplacementMaterial(asset: String) {
-        check(replacementAssets.edit().putBoolean(ReplacementAssets.key(asset), true).commit()) { "记录替换素材失败" }
-    }
-
-    /** User-confirmed legacy entry: remove from originals but retain its provenance tombstone. */
-    fun discardReplacementEntry(url: String) {
-        rememberReplacementMaterial(url)
-        val next = allCardUrls().filterNot { CardIdentity.key(it) == CardIdentity.key(url) }.toSet()
-        check(urls.edit().putStringSet(KEY_ALL_CARD_URLS, next).commit()) { "清理旧替换条目失败" }
-        names.edit().remove(url).commit()
-        detectedNames.edit().remove(url).commit()
-        touch()
-    }
-
-    private fun discardKnownReplacementEntries() {
-        val before = allCardUrls()
-        val kept = before.filterNot { isReplacementMaterial(it) }.toSet()
-        if (kept.size != before.size) check(urls.edit().putStringSet(KEY_ALL_CARD_URLS, kept).commit()) { "清理替换条目失败" }
-    }
-
-    private fun ownedSnapshot(): String? =
-        appContext.getSharedPreferences("owned_cards", Context.MODE_PRIVATE).getString("snapshot", null)
-
-    fun ownedCardUrls(): Set<String> = OwnedCardPolicy.snapshotUrls(ownedSnapshot())
-
-    private fun ownedDisplayName(url: String): String? =
-        OwnedCardPolicy.snapshotNames(ownedSnapshot())[url]
-
     fun cardFaces(): List<CardFaceItem> {
         val black = blacklistedUrls()
-        val mappings = mappingPairs()
-        // OnePlus home is driven exclusively by the latest wallet-owned snapshot.
-        val urls = if (WalletApps.primary(appContext) == WalletKind.ONEPLUS) ownedCardUrls() else allCardUrls()
-        return CardIdentity.group(urls
+        val replacementNames = mappedImageNames().toSet()
+        val sourceUrls = if (WalletApps.primary(appContext) == WalletKind.ONEPLUS) ownedCardUrls() else allCardUrls().toSet()
+        return CardIdentity.group(sourceUrls
             .filterNot { black.contains(it) }
-            .filterNot { isReplacementMaterial(it, mappings) }
+            .filterNot { isReplacementMaterial(it, mappingPairs()) }
+            .filterNot { isHiddenNonFace(it) }
+            // 卡包加载我们复制进去的替换图时也会产生 file:// URL，这不是真实卡面，过滤掉。
+            .filterNot { url ->
+                val name = url.substringAfterLast('/')
+                url.contains("com.dsh.miuix.cardface") ||
+                    replacementNames.contains(name) ||
+                    name.matches(Regex("^card-\\d{8}-\\d{6}\\.png$"))
+            }
             // 图标 / 横幅 / 广告 / 二维码等明显不是卡面的图，不展示。
             .filterNot { isJunkImageUrl(it) }
-            .map { CardFaceItem(url = it, replacement = replacementFor(it), customName = customName(it), detectedName = if (WalletApps.primary(appContext) == WalletKind.ONEPLUS) ownedDisplayName(it) else detectedName(it), runtimeState = applicationState(it)) })
+            .map { CardFaceItem(url = it, replacement = replacementFor(it), customName = customName(it), detectedName = if (WalletApps.primary(appContext) == WalletKind.ONEPLUS) ownedDisplayName(it) ?: detectedName(it) else detectedName(it)) })
     }
+
 
     /** 卡包里大量非卡面图片（图标、横幅、广告）会被 hook 抓到，这里统一过滤。 */
     fun isJunkImageUrl(url: String): Boolean {
@@ -249,63 +330,61 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
     /** 清理历史遗留的杂图 URL；返回清掉的数量。 */
     fun sanitizeCardUrls(): Int {
         val before = allCardUrls()
-        val mappings = mappingPairs()
+        val replacementNames = mappedImageNames().toSet()
         val kept = before.filterNot { url ->
-            isJunkImageUrl(url) || isReplacementMaterial(url, mappings)
+            val name = url.substringAfterLast('/')
+            isJunkImageUrl(url) || isReplacementMaterial(url) ||
+                url.contains("com.dsh.miuix.cardface") ||
+                replacementNames.contains(name) ||
+                name.matches(Regex("^card-\\d{8}-\\d{6}\\.png$"))
         }
         if (kept.size == before.size) return 0
         urls.edit().putStringSet(KEY_ALL_CARD_URLS, kept.toSet()).apply()
+        syncCardUrlsToRemote()
         touch()
         return before.size - kept.size
     }
 
     /** 黑名单里的卡面（用于黑名单页展示）。 */
+    /** 这三张是银行卡里的广告/示意图，不属于卡面，任何列表都不展示。 */
+    fun isHiddenNonFace(url: String): Boolean = url in HIDDEN_NON_FACE_URLS
+
     fun blacklistedCardFaces(): List<CardFaceItem> =
-        blacklistedUrls().sorted().map {
+        blacklistedUrls()
+            .filterNot { isHiddenNonFace(it) }
+            .sorted().map {
             CardFaceItem(url = it, replacement = replacementFor(it), customName = customName(it), detectedName = detectedName(it))
         }
 
-    fun replacementFor(url: String): String? =
-        MappingPolicy.lookup(url, effectiveMappings())
+    fun replacementFor(url: String): String? = MappingPolicy.lookup(url, effectiveMappings())
 
-    fun mutationKeys(url: String, mappings: Map<String, String> = mappingPairs()): Set<String> {
-        val group = sourceGroups().filter { url in it }.flatten().toSet()
-        val matching = mappings.filterKeys { it in group || CardIdentity.key(it) == CardIdentity.key(url) }
-        return if (matching.isNotEmpty() && matching.values.distinct().size == 1) matching.keys + url
-            else MappingPolicy.mutationKeys(url, mappings)
-    }
-
-    @Synchronized
     fun setReplacement(url: String, value: String?) {
         val before = mappingPairs()
         val keys = mutationKeys(url, before)
         val origins = appContext.getSharedPreferences("asset_origins", Context.MODE_PRIVATE)
         val history = origins.edit()
-        (keys.mapNotNull { key -> before[key]?.let { key to it } } + listOfNotNull(value?.takeIf { it.isNotBlank() }?.let { url to it }))
-            .forEach { (original, asset) ->
-                rememberReplacementMaterial(asset)
-                val key = CardRuntime.fingerprint(asset)
-                history.putStringSet(key, origins.getStringSet(key, emptySet()).orEmpty() + original)
-            }
-        check(history.commit()) { "保存图片来源记录失败" }
-        val now = maxOf(System.currentTimeMillis(), settings.getLong("mapping_revision", 0L) + 1)
+        (keys.mapNotNull { key -> before[key]?.let { key to it } } + listOfNotNull(value?.takeIf { it.isNotBlank() }?.let { url to it })).forEach { (source, asset) ->
+            rememberReplacementMaterial(asset)
+            val fingerprint = CardRuntime.fingerprint(asset)
+            history.putStringSet(fingerprint, origins.getStringSet(fingerprint, emptySet()).orEmpty() + source)
+        }
+        history.apply()
+        RemotePrefsBridge.syncGroup(appContext, "asset_origins")
+        RemotePrefsBridge.syncGroup(appContext, "replacement_assets")
         val editor = settings.edit()
         keys.forEach { key -> if (value.isNullOrBlank()) editor.remove(key) else editor.putString(key, value) }
-        editor.putLong("mapping_revision", now)
-        check(editor.commit()) { "保存替换配置失败" }
-        val meta = appContext.getSharedPreferences("saved_meta", Context.MODE_PRIVATE).edit()
-        keys.forEach { meta.putLong(it, now) }
-        check(meta.commit()) { "保存时间写入失败" }
-        discardKnownReplacementEntries()
+        editor.putLong("mapping_revision", maxOf(System.currentTimeMillis(), settings.getLong("mapping_revision", 0L) + 1))
+        editor.apply()
         touch()
-        if (syncSnapshots) SnapshotSync.request(appContext)
+        SnapshotSync.request(appContext)
     }
 
     /** 追加卡面 URL（供演示数据/测试使用；hook 上报走的是 provider 写回）。 */
     fun addCardUrl(urls: List<String>) {
         val next = allCardUrls().toMutableSet()
         next.addAll(urls.filterNot { isReplacementMaterial(it) })
-        this.urls.edit().putStringSet(KEY_ALL_CARD_URLS, next).apply()
+        this.urls.edit().putStringSet(KEY_ALL_CARD_URLS, next.toSet()).apply()
+        syncCardUrlsToRemote()
         touch()
     }
 
@@ -313,6 +392,7 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
         val next = allCardUrls().toMutableSet()
         next.remove(url)
         this.urls.edit().putStringSet(KEY_ALL_CARD_URLS, next).apply()
+        syncCardUrlsToRemote()
         setReplacement(url, null)
         touch()
     }
@@ -333,46 +413,6 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
         return out
     }
 
-    private fun sourceGroups(): List<Set<String>> {
-        val raw = appContext.getSharedPreferences("card_sources", Context.MODE_PRIVATE).all.values
-        return raw.mapNotNull { value -> runCatching {
-            val array = org.json.JSONArray(value as String)
-            (0 until array.length()).map { array.getString(it) }.toSet()
-        }.getOrNull() }
-    }
-
-    fun effectiveMappings(): Map<String, String> = CardSourceIndex.expand(mappingPairs(), sourceGroups())
-
-    fun savedAt(url: String): Long = appContext.getSharedPreferences("saved_meta", Context.MODE_PRIVATE)
-        .all.entries.filter { CardIdentity.key(it.key) == CardIdentity.key(url) }
-        .mapNotNull { it.value as? Long }.maxOrNull() ?: 0L
-
-    fun evidence(url: String): org.json.JSONObject? {
-        val prefs = appContext.getSharedPreferences("apply_state", Context.MODE_PRIVATE)
-        val matches = prefs.all.entries.filter { CardIdentity.key(it.key) == CardIdentity.key(url) }
-            .mapNotNull { runCatching { org.json.JSONObject(it.value as String) }.getOrNull() }
-        return matches.maxByOrNull { it.optLong("at") }
-    }
-
-    fun applicationState(url: String): String {
-        val e = evidence(url)
-        val at = e?.optLong("at") ?: 0L
-        val error = e?.optString("error")?.takeIf { it.isNotBlank() }
-        return CardRuntime.state(replacementFor(url), savedAt(url), e?.optString("fingerprint"),
-            if (error == null) at else 0L, if (error != null) at else 0L, error)
-    }
-
-    fun applicationDetails(url: String): String {
-        val e = evidence(url)
-        fun time(value: Long) = if (value <= 0) "暂无" else
-            java.text.SimpleDateFormat("MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(value))
-        val variants = allCardUrls().count { CardIdentity.key(it) == CardIdentity.key(url) }
-        return "状态：${applicationState(url)}\n同图地址：$variants 条\n保存时间：${time(savedAt(url))}\n最近回报：${time(e?.optLong("at") ?: 0)}\n" +
-            "卡名：${customName(url) ?: detectedName(url) ?: "尚未采集"}\n" +
-            "${e?.optString("error")?.takeIf { it.isNotBlank() }?.let { "异常：$it\n" } ?: ""}" +
-            "已命中表示 Hook 已交出替换地址，不代表图片显示成功；网络图片仍受网络可达性影响。"
-    }
-
     fun mappedImageNames(): List<String> = settings.all.values
         .filterIsInstance<String>()
         .filter { it.isNotBlank() && !it.startsWith("http://") && !it.startsWith("https://") }
@@ -381,18 +421,38 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
 
     fun replacedCount(): Int = allCardUrls().count { !replacementFor(it).isNullOrBlank() }
 
+    /** 从卡面列表移除指定 URL（不触碰其它卡面）。 */
+    fun removeCardUrls(toRemove: Collection<String>) {
+        if (toRemove.isEmpty()) return
+        val next = allCardUrls().filterNot { it in toRemove }
+        urls.edit().putStringSet(KEY_ALL_CARD_URLS, next.toSet()).apply()
+        syncCardUrlsToRemote()
+        toRemove.forEach { setReplacement(it, null) }
+        touch()
+    }
+
     fun clearCardUrls() {
         urls.edit().clear().apply()
         blackMarkClear()
+        RemotePrefsBridge.syncGroup(appContext, "card_urls")
         touch()
     }
 
     private fun blackMarkClear() {
+        // 清空所有卡面时同时清掉映射（settings 里除设置键以外的 URL 键）
         val editor = settings.edit()
-        mappingPairs().keys.forEach { editor.remove(it) }
+        val reserved = setOf(
+            KEY_HIDE_ICON, KEY_SHOW_ALL_CARDS, KEY_SUPER_LAND, KEY_TEST_MODE,
+            KEY_DEBUG, KEY_DEV_MODE, KEY_FIRST_RUN, "class", "method", "method_arg",
+            "load_url_from_arg", "replace_url_to_arg",
+        )
+        settings.all.keys.filter { key ->
+            !reserved.contains(key) && (key.startsWith("https://") || key.startsWith("http://"))
+        }.forEach { editor.remove(it) }
         editor.putLong("mapping_revision", maxOf(System.currentTimeMillis(), settings.getLong("mapping_revision", 0L) + 1))
-        check(editor.commit()) { "清空映射失败" }
-        if (syncSnapshots) SnapshotSync.request(appContext)
+        editor.apply()
+        SnapshotSync.request(appContext)
+        RemotePrefsBridge.syncGroup(appContext, "settings")
     }
 
     /** hook 进程报告的存活时间戳。 */
@@ -407,6 +467,12 @@ class AppPrefs(context: Context, private val syncSnapshots: Boolean = true) {
         const val KEY_HIDE_ICON = "hide_icon"
         const val KEY_SHOW_ALL_CARDS = "show_all_cards"
         const val KEY_SUPER_LAND = "super_land"
+
+        private val HIDDEN_NON_FACE_URLS = setOf(
+            "https://f1.market.xiaomi.com/mfc/thumbnail/webp/w1080h1920q80/NextPay/049d37450fbc04115108de552ccb433d13f7f23d6",
+            "https://f1.market.xiaomi.com/mfc/thumbnail/webp/w1080h1920q80/NextPay/09561b469c2be4ad0177235193bf781920df7eef3",
+            "https://f1.market.xiaomi.com/mfc/thumbnail/webp/w1080h1920q80/NextPay/0cb94e4a8a0644d47318a94b224142d71846f74d0",
+        )
         const val KEY_TEST_MODE = "test_mode"
         const val KEY_DEBUG = "debug"
         const val KEY_DEV_MODE = "dev_mode_open"

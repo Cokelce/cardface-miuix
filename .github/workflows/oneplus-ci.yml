@@ -1,0 +1,60 @@
+name: OnePlus CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a signed prerelease after checks pass
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: oneplus-ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/build-oneplus
+        id: build
+        with:
+          signing-keystore: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+          artifact-name: oneplus-${{ github.run_number }}-${{ github.run_attempt }}
+      - name: Publish checked OnePlus prerelease
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.build.outputs.version }}
+        shell: bash
+        run: |
+          TAG="v${VERSION}"
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists; preserving existing assets."
+            exit 0
+          fi
+          {
+            printf '## 一加钱包基础适配 %s\n\n' "$VERSION"
+            printf -- '- 目标钱包：`com.finshell.wallet`，仅一加作用域。\n'
+            printf -- '- 上游 2.0 系列模块界面、完整编辑功能与用户仓库更新源。\n'
+            printf -- '- 不包含钱包内封面页面实验。\n'
+            printf -- '- GitHub Actions 编译、单元测试、签名校验通过。\n'
+            printf -- '- 云端检查不等于一加钱包真机换图验收；本发布保留为预发布版。\n\n'
+            cat .ci-output/test-summary.txt
+            printf '\nSHA256:\n```text\n'
+            cat .ci-output/*.sha256
+            printf '```\n'
+          } > "$RUNNER_TEMP/oneplus-release.md"
+          gh release create "$TAG" .ci-output/*.apk .ci-output/*.sha256 \
+            --target "$GITHUB_SHA" --title "卡面工坊 ${VERSION} · 一加基础适配" \
+            --notes-file "$RUNNER_TEMP/oneplus-release.md" --prerelease

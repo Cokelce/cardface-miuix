@@ -31,7 +31,7 @@ data class GalleryImage(val file: File) {
 
 enum class WalletKind(val packageName: String, val label: String) {
     ONEPLUS("com.finshell.wallet", "一加钱包"),
-    MIUI("com.miui.tsmclient", "小米智能卡"),
+    MIUI("com.miui.tsmclient", "小米智能卡"), // 旧数据/API 枚举兼容；检测与 Hook 入口不使用
 }
 
 /** 模块与卡包的运行状态。 */

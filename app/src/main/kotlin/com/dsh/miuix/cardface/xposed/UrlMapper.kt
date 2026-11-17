@@ -81,13 +81,7 @@ object UrlMapper {
     )
 
     /** 去掉查询参数、缩略图尺寸段、哈希/UUID 段后的 URL，用来容忍卡包刷新后 URL 细节变化。 */
-    fun normalizedUrl(url: String): String {
-        var u = url.substringBefore('#').substringBefore('?')
-        u = SIZE_SEGMENT.replace(u, "")
-        u = UUID_SEGMENT.replace(u, "")
-        u = HASH_SEGMENT.replace(u, "")
-        return u.trimEnd('/')
-    }
+    fun normalizedUrl(url: String): String = com.dsh.miuix.cardface.core.CardIdentity.key(url)
 
     /**
      * 先精确匹配；再按归一化 URL 匹配；最后按「唯一同名文件」兜底。

@@ -1,0 +1,52 @@
+name: Upstream OnePlus Sync
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+concurrency:
+  group: upstream-oneplus-sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+      - name: Configure commit identity
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+      - name: Detect upstream and prepare OnePlus adaptation
+        id: sync
+        run: python3 tools/ci/sync_upstream.py prepare
+      - name: Compile and test adaptation
+        if: steps.sync.outputs.changed == 'true'
+        uses: ./.github/actions/build-oneplus
+        with:
+          signing-keystore: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+          artifact-name: upstream-${{ steps.sync.outputs.upstream_sha }}
+      - name: Push verified adaptation and open PR
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          SYNC_BRANCH: ${{ steps.sync.outputs.branch }}
+          SYNC_VERSION: ${{ steps.sync.outputs.version }}
+        run: |
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "chore: adapt upstream as ${SYNC_VERSION}"
+          git push origin "HEAD:refs/heads/${SYNC_BRANCH}"
+          python3 tools/ci/sync_upstream.py publish --branch "$SYNC_BRANCH" --version "$SYNC_VERSION"
+      - name: Report failure
+        if: failure()
+        run: |
+          python3 tools/ci/sync_upstream.py report "自动同步或编译失败：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}。现役 main 未自动改动，详情见工作流日志。"

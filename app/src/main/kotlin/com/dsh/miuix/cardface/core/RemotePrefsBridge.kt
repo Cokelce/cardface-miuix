@@ -22,6 +22,10 @@ object RemotePrefsBridge {
     @Volatile private var service: XposedService? = null
     @Volatile private var settings: SharedPreferences? = null
     @Volatile private var cardUrls: SharedPreferences? = null
+    @Volatile private var detectedNames: SharedPreferences? = null
+    @Volatile private var cardSources: SharedPreferences? = null
+    @Volatile private var ownedCards: SharedPreferences? = null
+    @Volatile private var replacementAssets: SharedPreferences? = null
 
     private val pending = ConcurrentLinkedQueue<(XposedService) -> Unit>()
     private val readyListeners = CopyOnWriteArrayList<() -> Unit>()
@@ -36,6 +40,10 @@ object RemotePrefsBridge {
                     this@RemotePrefsBridge.service = service
                     settings = runCatching { service.getRemotePreferences("settings") }.getOrNull()
                     cardUrls = runCatching { service.getRemotePreferences("card_urls") }.getOrNull()
+                    detectedNames = runCatching { service.getRemotePreferences("detected_names") }.getOrNull()
+                    cardSources = runCatching { service.getRemotePreferences("card_sources") }.getOrNull()
+                    ownedCards = runCatching { service.getRemotePreferences("owned_cards") }.getOrNull()
+                    replacementAssets = runCatching { service.getRemotePreferences("replacement_assets") }.getOrNull()
                     available = settings != null
                     Log.i(TAG, "service bound, remote available=$available")
                     while (true) {
@@ -49,12 +57,35 @@ object RemotePrefsBridge {
                     this@RemotePrefsBridge.service = null
                     settings = null
                     cardUrls = null
+                    detectedNames = null
+                    cardSources = null
+                    ownedCards = null
+                    replacementAssets = null
                     available = false
                     Log.i(TAG, "service died")
                 }
             })
         } catch (t: Throwable) {
             Log.w(TAG, "init remote prefs failed", t)
+        }
+    }
+
+    /** Bulk-mirror an existing local preference group without dropping empty sets/false values. */
+    fun syncGroup(context: Context, name: String) {
+        val local = context.applicationContext.getSharedPreferences(name, Context.MODE_PRIVATE).all
+        val groupName = name
+        val snapshot = local.toMap()
+        apply(groupName) { editor ->
+            editor.clear()
+            snapshot.forEach { (key, value) -> when (value) {
+                null -> editor.remove(key)
+                is String -> editor.putString(key, value)
+                is Boolean -> editor.putBoolean(key, value)
+                is Int -> editor.putInt(key, value)
+                is Long -> editor.putLong(key, value)
+                is Float -> editor.putFloat(key, value)
+                is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toMutableSet())
+            } }
         }
     }
 
@@ -65,6 +96,13 @@ object RemotePrefsBridge {
     fun group(name: String): SharedPreferences? = when (name) {
         "settings" -> settings
         "card_urls" -> cardUrls
+        "detected_names" -> detectedNames
+        "card_sources" -> cardSources
+        "owned_cards" -> ownedCards
+        "replacement_assets" -> replacementAssets
+        "asset_origins" -> service?.let { runCatching { it.getRemotePreferences("asset_origins") }.getOrNull() }
+        "apply_state" -> service?.let { runCatching { it.getRemotePreferences("apply_state") }.getOrNull() }
+        "runtime_health" -> service?.let { runCatching { it.getRemotePreferences("runtime_health") }.getOrNull() }
         else -> null
     }
 
@@ -80,7 +118,7 @@ object RemotePrefsBridge {
                 runCatching {
                     val p = when (group) {
                         "settings" -> svc.getRemotePreferences("settings")
-                        "card_urls" -> svc.getRemotePreferences("card_urls")
+                        "card_urls", "detected_names", "card_sources", "owned_cards", "replacement_assets", "asset_origins", "apply_state", "runtime_health" -> svc.getRemotePreferences(group)
                         else -> null
                     }
                     if (p != null) p.edit().also(block).apply()
@@ -109,9 +147,30 @@ object RemotePrefsBridge {
                     }
                 }?.apply()
                 cardUrls?.edit()?.also { e ->
-                    val set = localUrls.getStringSet("all_card_url_set", emptySet()) ?: emptySet()
-                    if (set.isNotEmpty()) e.putStringSet("all_card_url_set", set)
+                    e.clear()
+                    localUrls.all.forEach { (k, v) -> when (v) {
+                        is String -> e.putString(k, v)
+                        is Boolean -> e.putBoolean(k, v)
+                        is Int -> e.putInt(k, v)
+                        is Long -> e.putLong(k, v)
+                        is Float -> e.putFloat(k, v)
+                        is Set<*> -> e.putStringSet(k, v.filterIsInstance<String>().toMutableSet())
+                    } }
                 }?.apply()
+                listOf("detected_names", "card_sources", "asset_origins", "replacement_assets", "owned_cards", "apply_state", "runtime_health").forEach { group ->
+                    val local = context.getSharedPreferences(group, Context.MODE_PRIVATE).all.toMap()
+                    group(group)?.edit()?.also { e ->
+                        e.clear()
+                        local.forEach { (k, v) -> when (v) {
+                            is String -> e.putString(k, v)
+                            is Boolean -> e.putBoolean(k, v)
+                            is Int -> e.putInt(k, v)
+                            is Long -> e.putLong(k, v)
+                            is Float -> e.putFloat(k, v)
+                            is Set<*> -> e.putStringSet(k, v.filterIsInstance<String>().toMutableSet())
+                        } }
+                    }?.apply()
+                }
                 marker.edit().putBoolean("migrated", true).apply()
                 Log.i(TAG, "migrated local prefs to remote")
             }.onFailure { Log.w(TAG, "migrate failed", it) }

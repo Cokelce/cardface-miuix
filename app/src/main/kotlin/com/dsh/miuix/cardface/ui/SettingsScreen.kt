@@ -35,6 +35,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -51,16 +53,20 @@ import top.yukonga.miuix.kmp.icon.extended.Background
 import top.yukonga.miuix.kmp.icon.extended.BankCards
 import top.yukonga.miuix.kmp.icon.extended.Blocklist
 import top.yukonga.miuix.kmp.icon.extended.Community
+import top.yukonga.miuix.kmp.icon.extended.Clear
+import top.yukonga.miuix.kmp.icon.extended.CloudFill
 import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.icon.extended.Delete
 import top.yukonga.miuix.kmp.icon.extended.Help
 import top.yukonga.miuix.kmp.icon.extended.Hide
 import top.yukonga.miuix.kmp.icon.extended.Image
+import top.yukonga.miuix.kmp.icon.extended.Store
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Notes
 import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.icon.extended.Refresh
+import top.yukonga.miuix.kmp.icon.extended.Rename
 import top.yukonga.miuix.kmp.icon.extended.Reset
 import top.yukonga.miuix.kmp.icon.extended.Show
 import top.yukonga.miuix.kmp.icon.extended.Theme
@@ -91,8 +97,7 @@ fun SettingsScreen(
     onOpenGuide: () -> Unit,
     onOpenFaq: () -> Unit,
     onOpenAbout: () -> Unit,
-    onOpenDevHook: () -> Unit,
-    onOpenDevConsole: () -> Unit,
+    onOpenVersion: () -> Unit,
 ) {
     val context = LocalContext.current
     val prefs = model.prefs
@@ -106,13 +111,47 @@ fun SettingsScreen(
 
     var info by remember { mutableStateOf<Pair<String, String>?>(null) }
     var confirm by remember { mutableStateOf<ConfirmSpec?>(null) }
-    var versionTapCount by remember { mutableIntStateOf(0) }
     var showThemeDialog by remember { mutableStateOf(false) }
     var showDarkDialog by remember { mutableStateOf(false) }
     var showSyncDialog by remember { mutableStateOf(false) }
 
     fun toast(message: String) {
         scope.launch { model.notify(message) }
+    }
+
+    val exportBackup = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val zip = com.dsh.miuix.cardface.core.AppBackup.export(context, prefs)
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        zip.inputStream().use { it.copyTo(out) }
+                    } ?: error("无法写入文件")
+                    zip.delete()
+                }.isSuccess
+            }
+            toast(if (ok) "备份已导出" else "备份导出失败")
+        }
+    }
+    val importBackup = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        confirm = ConfirmSpec(
+            title = "恢复这份备份？",
+            message = "会覆盖当前设置、映射和图库替换图，恢复后建议重启卡包。",
+            confirmText = "恢复",
+            onConfirm = {
+                scope.launch {
+                    val result = withContext(Dispatchers.IO) {
+                        runCatching { com.dsh.miuix.cardface.core.AppBackup.restore(context, uri) }
+                    }
+                    result.onSuccess {
+                        model.bumpStore()
+                        toast("已恢复：${it.mappings} 条映射，${it.images} 张图")
+                    }.onFailure { toast("恢复失败：${it.message ?: "文件不可用"}") }
+                }
+            },
+        )
     }
 
     LazyColumn(
@@ -125,14 +164,13 @@ fun SettingsScreen(
         item(key = "header") {
             LargeTitleHeader(
                 title = "设置",
-                subtitle = "模块状态、显示方式与缓存",
                 contentPadding = PaddingValues(start = 20.dp, end = 10.dp, top = 14.dp, bottom = 8.dp),
             )
         }
 
         // ---------- 模块 ----------
         item(key = "module") {
-            SettingsGroup("模块") {
+            SettingsGroup("模块与卡包") {
                 val moduleSummary = when {
                     status == null -> "读取失败"
                     status.lastHookAt <= 0L -> "未生效 · 打开卡包浏览卡面后自动上报"
@@ -164,7 +202,7 @@ fun SettingsScreen(
                     summary = DeviceBridge.walletLabel(walletKind),
                     onClick = {
                         if (walletKind == null) {
-                            info = "没有找到卡包" to "本机尚未检测到一加钱包或小米智能卡。"
+                            info = "没有找到卡包" to "本机没有安装一加钱包，安装后才能替换卡面。"
                         } else if (!DeviceBridge.openWallet(context, walletKind)) {
                             info = "打不开卡包" to "系统没有返回 ${walletKind.label} 的启动入口，请手动打开。"
                         }
@@ -178,7 +216,7 @@ fun SettingsScreen(
                         lsposedManager != null && (status?.lastHookAt ?: 0L) > 0L ->
                             "管理器：${lsposedManager.label} · 作用域已勾选"
                         lsposedManager != null ->
-                            "管理器：${lsposedManager.label} · 请在 LSPosed 里勾选本机钱包"
+                            "管理器：${lsposedManager.label} · 请在 LSPosed 里勾选一加钱包"
                         status?.lsposedInstalled == true ->
                             "寄生/隐藏模式 · 从 LSPosed 通知打开管理器"
                         else -> "未检测到 LSPosed 管理器"
@@ -187,8 +225,8 @@ fun SettingsScreen(
                         info = "启用模块与作用域" to buildString {
                             appendLine("1. 打开你的 LSPosed 管理器（本机可能是寄生 / 隐藏模式，桌面没有图标）。")
                             appendLine("2. 在模块列表里启用「卡面工坊」。")
-                            appendLine("3. 一加勾选钱包（com.finshell.wallet），小米勾选小米智能卡。")
-                            appendLine("4. 重启本机钱包，再打开它把卡面浏览一遍。")
+                            appendLine("3. 勾选作用域：一加钱包（com.finshell.wallet）。")
+                            appendLine("4. 强行停止一加钱包，再打开它把卡面浏览一遍。")
                             appendLine("5. 回到卡面工坊下拉刷新，就能看到卡面了。")
                             appendLine()
                             append("检测到的管理器：")
@@ -206,13 +244,9 @@ fun SettingsScreen(
             }
         }
 
-        item(key = "maintenance") {
-            MaintenanceTools(model) { title, message -> info = title to message }
-        }
-
-        // ---------- 卡面显示 ----------
+        // ---------- 桌面与卡面 ----------
         item(key = "display") {
-            SettingsGroup("卡面显示") {
+            SettingsGroup("桌面与卡面") {
                 SwitchPreference(
                     title = "隐藏桌面图标",
                     startAction = { SettingRowIcon(MiuixIcons.Hide) },
@@ -231,7 +265,9 @@ fun SettingsScreen(
                                         com.dsh.miuix.cardface.core.PackageOps.postHiddenEntryNotification(context)
                                         toast("已隐藏桌面图标（通知栏有入口）")
                                     } else {
-                                        toast("隐藏失败：系统拒绝修改组件状态")
+                                        prefs.hideIcon = false
+                                        com.dsh.miuix.cardface.core.PackageOps.setLauncherVisible(context, true)
+                                        toast("隐藏失败：组件状态未更新，已恢复显示")
                                     }
                                 },
                             )
@@ -243,30 +279,25 @@ fun SettingsScreen(
                         }
                     },
                 )
-                if (walletKind == WalletKind.MIUI) {
-                    RowDivider()
-                    SwitchPreference(
-                        title = "包含小米超级岛卡面",
-                    startAction = { SettingRowIcon(MiuixIcons.Show) },
-                        summary = "关闭后不拦截超级岛里的卡面",
-                        checked = prefs.superIsland,
-                        onCheckedChange = { prefs.superIsland = it },
-                    )
-                }
-                RowDivider()
-                SwitchPreference(
-                    title = "显示全部卡面",
-                    startAction = { SettingRowIcon(MiuixIcons.Image) },
-                    summary = "关闭时会过滤小图（w270h480 / logo / Mibi）",
-                    checked = prefs.showAllCards,
-                    onCheckedChange = { prefs.showAllCards = it },
-                )
                 RowDivider()
                 ArrowPreference(
                     title = "主界面卡面黑名单",
                     startAction = { SettingRowIcon(MiuixIcons.Blocklist) },
-                    summary = "已加入 ${prefs.blacklistedUrls().size} 张",
+                    summary = "已加入 ${prefs.blacklistedCardFaces().size} 张",
                     onClick = onOpenBlacklist,
+                )
+            }
+        }
+
+        // ---------- 卡面库 ----------
+        item(key = "catalog") {
+            SettingsGroup("卡面库") {
+                SwitchPreference(
+                    title = "省流量模式",
+                    startAction = { SettingRowIcon(MiuixIcons.CloudFill) },
+                    summary = "Wi-Fi 下加载原图；移动网络用压缩缩略图，省流量但稍糊",
+                    checked = prefs.dataSaver,
+                    onCheckedChange = { prefs.dataSaver = it },
                 )
             }
         }
@@ -338,7 +369,51 @@ fun SettingsScreen(
 
         // ---------- 缓存与修复 ----------
         item(key = "cache") {
-            SettingsGroup("缓存与修复") {
+            SettingsGroup("数据与维护") {
+                ArrowPreference(
+                    title = "备份数据",
+                    startAction = { SettingRowIcon(MiuixIcons.Notes) },
+                    summary = "导出设置、映射和图库替换图（zip）",
+                    onClick = { exportBackup.launch("卡面工坊备份-${System.currentTimeMillis() / 1000}.zip") },
+                )
+                RowDivider()
+                ArrowPreference(
+                    title = "恢复数据",
+                    startAction = { SettingRowIcon(MiuixIcons.Refresh) },
+                    summary = "从备份 zip 恢复设置、映射和替换图",
+                    onClick = { importBackup.launch(arrayOf("application/zip", "application/octet-stream")) },
+                )
+                RowDivider()
+                ArrowPreference(
+                    title = "一键重启卡包",
+                    startAction = { SettingRowIcon(MiuixIcons.Refresh) },
+                    summary = "强制停止并重新打开卡包，让替换立即生效",
+                    onClick = {
+                        scope.launch {
+                            val ok = withContext(Dispatchers.IO) { DeviceBridge.restartWallet(context, walletKind) }
+                            toast(if (ok) "已重启卡包" else "重启失败：请检查 root 或卡包是否安装")
+                        }
+                    },
+                )
+                RowDivider()
+                ArrowPreference(
+                    title = "导出诊断信息",
+                    startAction = { SettingRowIcon(MiuixIcons.Info) },
+                    summary = "生成版本、设备、映射数量等信息并分享",
+                    onClick = {
+                        scope.launch {
+                            val file = withContext(Dispatchers.IO) {
+                                runCatching { writeDiagnostics(context, prefs, status, versionName) }.getOrNull()
+                            }
+                            if (file != null) {
+                                com.dsh.miuix.cardface.core.CardShare.shareTextFile(context, file, "分享诊断信息")
+                            } else {
+                                toast("诊断信息生成失败")
+                            }
+                        }
+                    },
+                )
+                RowDivider()
                 ArrowPreference(
                     title = "清除 hook 点缓存",
                     startAction = { SettingRowIcon(MiuixIcons.Refresh) },
@@ -384,6 +459,30 @@ fun SettingsScreen(
                 )
                 RowDivider()
                 ArrowPreference(
+                    title = "清理未替换的卡面",
+                    startAction = { SettingRowIcon(MiuixIcons.Clear) },
+                    summary = "清掉打开添加卡片页时带出来的原图，已替换的卡面保留",
+                    onClick = {
+                        val unreplaced = prefs.allCardUrls().filter { prefs.replacementFor(it) == null }
+                        if (unreplaced.isEmpty()) {
+                            toast("没有未替换的卡面")
+                        } else {
+                            confirm = ConfirmSpec(
+                                title = "清理 ${unreplaced.size} 张未替换卡面？",
+                                message = "只会从卡面列表移除没有替换图的卡片，不影响已经替换的卡面和图库。",
+                                confirmText = "清理",
+                                onConfirm = {
+                                    prefs.removeCardUrls(unreplaced)
+                                    com.dsh.miuix.cardface.core.CardSync.writeMapSnapshot(context, prefs)
+                                    model.bumpStore()
+                                    toast("已清理 ${unreplaced.size} 张未替换卡面")
+                                },
+                            )
+                        }
+                    },
+                )
+                RowDivider()
+                ArrowPreference(
                     title = "清空所有卡面记录",
                     startAction = { SettingRowIcon(MiuixIcons.Delete) },
                     summary = "已识别 ${prefs.allCardUrls().size} 张；替换图本身不会被删除",
@@ -406,74 +505,13 @@ fun SettingsScreen(
             }
         }
 
-        // ---------- 高级 ----------
-        if (prefs.devMode) {
-            item(key = "advanced") {
-                SettingsGroup("高级（调试）") {
-                    SwitchPreference(
-                        title = "输出调试日志",
-                    startAction = { SettingRowIcon(MiuixIcons.Notes) },
-                        summary = "卡包进程会打印 hook 日志，排查时打开",
-                        checked = prefs.debugLog,
-                        onCheckedChange = { prefs.debugLog = it },
-                    )
-                    RowDivider()
-                    ArrowPreference(
-                        title = "自定义 hook 点",
-                    startAction = { SettingRowIcon(MiuixIcons.Link) },
-                        summary = "自动定位失败时，手动填类名 / 方法名",
-                        onClick = onOpenDevHook,
-                    )
-                    RowDivider()
-                    ArrowPreference(
-                        title = "诊断终端（root）",
-                    startAction = { SettingRowIcon(MiuixIcons.Tune) },
-                        summary = "执行 adb shell 命令、看 hook 日志、查卡包入口",
-                        onClick = onOpenDevConsole,
-                    )
-                    RowDivider()
-                    ArrowPreference(
-                        title = "映射同步方式",
-                        startAction = { SettingRowIcon(MiuixIcons.Tune) },
-                        summary = prefs.syncMode.label + "（推荐自动）",
-                        onClick = { showSyncDialog = true },
-                    )
-                    RowDivider()
-                    SwitchPreference(
-                        title = "兼容模式（复制图片到卡包目录）",
-                    startAction = { SettingRowIcon(MiuixIcons.Copy) },
-                        summary = "需要 root；开启后强制把图复制到卡包目录并用 file:// 加载",
-                        checked = prefs.compatCopy,
-                        onCheckedChange = { checked ->
-                            prefs.compatCopy = checked
-                            toast(if (checked) "兼容模式已开启，重启卡包后生效" else "兼容模式已关闭")
-                        },
-                    )
-                }
-            }
-        }
-
         // ---------- 关于 ----------
         item(key = "about") {
             SettingsGroup("关于") {
                 ArrowPreference(
                     title = "版本 v$versionName",
-                    summary = if (prefs.devMode) "Miuix 重制版 · 高级设置已解锁" else "Miuix 重制版",
-                    onClick = {
-                        if (prefs.devMode) {
-                            onOpenAbout()
-                        } else {
-                            versionTapCount++
-                            val left = 10 - versionTapCount
-                            if (left <= 0) {
-                                prefs.devMode = true
-                                versionTapCount = 0
-                                toast("高级设置已解锁")
-                            } else {
-                                toast("再点 $left 次解锁高级设置")
-                            }
-                        }
-                    },
+                    summary = "内部 ${com.dsh.miuix.cardface.core.BuildInfo.INTERNAL_VERSION} · 检查更新 / 更新公告",
+                    onClick = onOpenVersion,
                 )
                 RowDivider()
                 ArrowPreference(title = "使用说明", onClick = onOpenGuide)
@@ -719,4 +757,30 @@ private fun SettingRowIcon(image: androidx.compose.ui.graphics.vector.ImageVecto
         tint = MiuixTheme.colorScheme.onBackground,
         modifier = Modifier.size(22.dp),
     )
+}
+
+private fun writeDiagnostics(
+    context: android.content.Context,
+    prefs: AppPrefs,
+    status: com.dsh.miuix.cardface.core.ModuleStatus?,
+    versionName: String,
+): java.io.File {
+    val info = buildString {
+        appendLine("卡面工坊诊断信息")
+        appendLine("时间：${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}")
+        appendLine("版本：$versionName（code ${runCatching { context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode }.getOrDefault(0L)}）")
+        appendLine("设备：${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} / Android ${android.os.Build.VERSION.RELEASE} (SDK ${android.os.Build.VERSION.SDK_INT})")
+        appendLine("卡包：${status?.walletKind?.label ?: "未检测到"}")
+        appendLine("hook：${if ((status?.lastHookAt ?: 0L) > 0) "已上报" else "未生效"}")
+        appendLine("映射数量：${prefs.mappedImageNames().size}")
+        appendLine("卡面数量：${runCatching { prefs.allCardUrls().size }.getOrDefault(0)}")
+        appendLine("图库图片：${runCatching { prefs.cardFaces().size }.getOrDefault(0)}")
+        appendLine("黑名单：${prefs.blacklistedCardFaces().size}")
+        appendLine("同步方式：${prefs.syncMode.label}")
+        appendLine("省流量：${prefs.dataSaver}")
+        appendLine("深色模式：${prefs.darkMode}")
+    }
+    val file = java.io.File(context.cacheDir, "cardface-diagnostics.txt")
+    file.writeText(info)
+    return file
 }

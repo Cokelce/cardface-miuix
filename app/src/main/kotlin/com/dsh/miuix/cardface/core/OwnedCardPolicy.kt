@@ -3,7 +3,7 @@ package com.dsh.miuix.cardface.core
 /** Pure policy for the OnePlus wallet's real, account-owned NFC cards. */
 object OwnedCardPolicy {
     private val blockedStatuses = setOf(
-        "", "RECOMMEND", "WAIT_TO_RECEIVE", "NOT_BINDED", "DELETED", "DELETING",
+        "", "RECOMMEND", "WAIT_TO_RECEIVE", "ALLOW_OPEN", "NOT_BINDED", "DELETED", "DELETING",
         "CANCELED", "DK_CANCELED", "TERMINATE", "TERMINATED_IN_VEHICLE",
         "TERMINATED_ON_DEVICE", "IN_TERMINATION_ON_VEHICLE_FIRST", "NO_PIN",
     )
@@ -24,11 +24,18 @@ object OwnedCardPolicy {
         val aid = candidate.aid?.trim().orEmpty()
         val unique = candidate.uniqueCardId?.trim().orEmpty()
         val url = candidate.imageUrl?.trim().orEmpty()
-        // The wallet's own card-count queries use a non-empty AID as the
-        // provisioning marker. uniqueCardId also exists on template records,
-        // so it cannot establish that the card was created by this account.
+        // Only called for records returned by the current-account NfcCard list.
+        // NFC AIDs are absent on provisioned QR/payment cards. Such records need
+        // a real card instance ID and an explicitly provisioned lifecycle state.
+        // Templates may also have instance IDs, so an ID alone is never enough.
+        val provisionedWithoutAid = status in setOf(
+            "ACTIVE", "SUC", "SUSPEND", "SUSPENDED", "RESUME", "WAIT_ACTIVATE",
+            "PUSH_RESUME", "PUSH_RESUME_REQUEST", "PUSH_SUSPEND",
+            "WAIT_DEVICE_RESUME", "WAIT_VEHICLE_RESUME", "WAIT_VEHICLE_SUSPEND",
+        ) && unique.isNotEmpty() && !unique.equals("null", true)
+        val validAid = aid.isNotEmpty() && !aid.equals("null", true)
         return type !in blockedTypes && status !in blockedStatuses &&
-            aid.isNotEmpty() && url.isNotEmpty()
+            (validAid || provisionedWithoutAid) && url.isNotEmpty()
     }
 
     fun normalizeUrl(url: String): String = url.trim()

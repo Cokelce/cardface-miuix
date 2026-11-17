@@ -15,7 +15,7 @@ object WalletApps {
         }
 
     fun installed(context: Context): List<WalletKind> =
-        WalletKind.entries.filter { isInstalled(context, it.packageName) }
+        if (isInstalled(context, WalletKind.ONEPLUS.packageName)) listOf(WalletKind.ONEPLUS) else emptyList()
 
     fun primary(context: Context): WalletKind? = installed(context).firstOrNull()
 

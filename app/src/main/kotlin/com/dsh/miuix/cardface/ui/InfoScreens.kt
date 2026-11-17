@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,6 +40,7 @@ import com.dsh.miuix.cardface.core.CardFaceItem
 import com.dsh.miuix.cardface.core.WalletApps
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
@@ -104,7 +107,7 @@ fun GuideScreen(
                 NumberedStep(
                     index = 1,
                     title = "在 LSPosed 里启用模块",
-                    description = "勾选作用域：本机钱包（一加钱包 / 小米智能卡）。改完建议重启一次手机。",
+                    description = "勾选作用域：一加钱包。改完建议重启一次手机。",
                     done = status?.lsposedInstalled == true && status.moduleActivated,
                     actionText = "打开 LSPosed",
                     onAction = {
@@ -159,7 +162,7 @@ fun GuideScreen(
             "打开方式：\n" +
             "1. 下拉通知栏；\n" +
             "2. 点「Android 系统 · Xposed 模块已更新」或「LSPosed」通知；\n" +
-            "3. 在模块列表里启用「卡面工坊」，勾选作用域（一加钱包 / 小米智能卡）；\n" +
+            "3. 在模块列表里启用「卡面工坊」，勾选作用域（一加钱包）；\n" +
             "4. 强行停止卡包，再打开卡包把卡面浏览一遍。",
         onDismiss = { showManagerHelp = false },
     )
@@ -173,17 +176,17 @@ private val FAQ_ITEMS = listOf(
     "改完卡面没有变化？" to
         "替换是在卡包进程里生效的，保存后要把卡包从后台划掉再重新打开（或等系统杀掉进程）。设置页的「清除 hook 点缓存」也会顺带重启卡包。",
     "识别不到任何卡面？" to
-        "先在 LSPosed 里确认「卡面工坊」已启用、作用域已勾选本机钱包，然后打开卡包把卡面浏览一遍，再回到首页下拉刷新。",
+        "先在 LSPosed 里确认「卡面工坊」已启用、作用域已勾选一加钱包，然后打开卡包把卡面浏览一遍，再回到首页下拉刷新。",
     "LSPosed 作用域是什么？" to
-        "作用域决定模块要注入哪些应用。一加设备勾选钱包（com.finshell.wallet），小米设备勾选小米智能卡。",
+        "作用域决定模块要注入哪些应用。本模块只作用于一加钱包，勾选它就够了，不要全选。",
     "为什么有些小图没被识别？" to
-        "默认会过滤掉卡包里的小图标（w270h480、logo、Mibi 之类），避免列表里塞满无关图片。想全部显示可以打开设置里的「显示全部卡面」。",
+        "默认会过滤掉卡包里的小图标（w270h480、logo、Mibi 之类），避免列表里塞满无关图片。",
     "黑名单有什么用？" to
         "加入黑名单的卡面不会出现在首页，也不会被替换。适合屏蔽调试时出现的测试图或不想要的卡面，随时可以在设置 → 卡面黑名单里移出。",
     "图片会被上传吗？" to
         "不会。所有图片都在本机处理（裁剪和缩放都在手机上完成），应用没有上传逻辑，也不收集任何使用数据。",
     "支持哪些卡包？" to
-        "支持一加钱包（com.finshell.wallet，基于 5.52.0 适配）与小米智能卡。",
+        "本适配版面向一加钱包（com.finshell.wallet）。",
 )
 
 @Composable
@@ -242,17 +245,13 @@ fun AboutScreen(
     onBack: () -> Unit,
     onOpenGuide: () -> Unit = {},
     onOpenFaq: () -> Unit = {},
+    onOpenChangelog: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = model.prefs
     val version = remember { DeviceBridge.versionName(context) }
     var checking by remember { mutableStateOf(false) }
-    var availableUpdate by remember { mutableStateOf<Updates.Release?>(null) }
-    var downloadProgress by remember { mutableStateOf<String?>(null) }
-    var downloadJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    var downloadedUpdate by remember { mutableStateOf<Pair<Updates.Release, java.io.File>?>(null) }
-
     var info by remember { mutableStateOf<Pair<String, String>?>(null) }
     var autoCheckUpdate by remember { mutableStateOf(prefs.autoCheckUpdate) }
 
@@ -270,7 +269,10 @@ fun AboutScreen(
             if (latest == null) {
                 info = "检查更新" to "检查失败，请检查网络后重试。"
             } else if (latest.versionName.isNotBlank() && Updates.isNewer(latest.versionName, version)) {
-                availableUpdate = latest
+                info = "发现新版本 v${latest.versionName}" to
+                    "当前版本：v$version\n最新版本：v${latest.versionName}\n\n" +
+                    (latest.body.ifBlank { "暂无更新说明" }) +
+                    "\n\n项目地址：${latest.htmlUrl}"
             } else {
                 info = "已是最新版本" to "当前 v$version 已经是最新版本。"
             }
@@ -317,13 +319,13 @@ fun AboutScreen(
                     Spacer(Modifier.size(14.dp))
                     Column {
                         Text(
-                            text = "卡面工坊·一加适配",
+                            text = "卡面工坊",
                             style = MiuixTheme.textStyles.headline2,
                             fontWeight = FontWeight.Bold,
                             color = MiuixTheme.colorScheme.onSurface,
                         )
                         Text(
-                            text = "v$version · 内部 ${com.dsh.miuix.cardface.core.BuildInfo.INTERNAL_VERSION} · Miuix 一加适配版",
+                            text = "v$version · 内部 ${com.dsh.miuix.cardface.core.BuildInfo.INTERNAL_VERSION} · Miuix 重制版",
                             style = MiuixTheme.textStyles.footnote1,
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         )
@@ -331,27 +333,25 @@ fun AboutScreen(
                 }
                 Spacer(Modifier.height(14.dp))
                 Text(
-                    text = "把一加钱包与小米智能卡里的卡面换成你喜欢的图片。\n" +
+                    text = "把一加钱包里的卡面换成你喜欢的图片。\n" +
                         "基于原版「DIY NFC卡面图片」v2.4 重写：界面换成 Miuix（HyperOS 风格），" +
-                        "图片缩放换成 Lanczos3（不再有锯齿），替换图通过 file:// 直接交给卡包加载。新增一加钱包（com.finshell.wallet）适配，保留原有图库、裁剪和卡面管理流程。",
+                        "图片缩放换成 Lanczos3（不再有锯齿），替换图通过 file:// 直接交给卡包加载。",
                     style = MiuixTheme.textStyles.body2,
                     color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MiniTag("一加钱包适配")
                     MiniTag("LSPosed 模块")
                     MiniTag("Kotlin + Compose")
                     MiniTag("Miuix 0.9.4")
                 }
-
             }
         }
 
         // 项目：地址 / 检查更新 / 更新公告 / 自动检查开关
         item(key = "project") {
             Column {
-                SmallTitle(text = "项目")
+                SmallTitle(text = "版本与更新")
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -373,8 +373,8 @@ fun AboutScreen(
                     HorizontalDivider()
                     ArrowPreference(
                         title = "更新公告",
-                        summary = "查看最近版本的更新内容",
-                        onClick = { showAnnouncement() },
+                        summary = "查看历史版本的更新日志",
+                        onClick = onOpenChangelog,
                     )
                     HorizontalDivider()
                     SwitchPreference(
@@ -386,68 +386,6 @@ fun AboutScreen(
                             prefs.autoCheckUpdate = it
                         },
                     )
-                }
-            }
-        }
-
-        // 功能
-        item(key = "features") {
-            Column {
-                SmallTitle(text = "功能")
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    cornerRadius = 20.dp,
-                    insideMargin = PaddingValues(20.dp),
-                ) {
-                    AboutLine("高质量缩放", "缩放感知 Lanczos3 + 线性光，960×606 输出，细线/文字不再锯齿。")
-                    AboutLine("替换方式", "替换图复制到卡包私有目录后以 file:// 加载（复制步骤需要 root）。")
-                    AboutLine("一加钱包", "基于 com.finshell.wallet 5.52.0 适配，支持卡面采集、自定义图片映射与同步。")
-                    AboutLine("小米智能卡", "在 Xiaomi 15 Pro / HyperOS（LSPosed 2.2.1）上真机验证通过。")
-                    AboutLine("外观可调", "澎湃蓝 / 动态取色 / 8 个预设色 / 深色模式 / 过渡动画。")
-                    AboutLine("演示模式", "没装卡包也能完整体验选图、裁剪、卡面标志流程。")
-                }
-            }
-        }
-
-        // 开源与引用
-        item(key = "oss") {
-            Column {
-                SmallTitle(text = "开源与引用")
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    cornerRadius = 20.dp,
-                    insideMargin = PaddingValues(20.dp),
-                ) {
-                    AboutLine("本应用", "卡面工坊 · Miuix 一加适配版，基于原项目修改，以 GPL-3.0 许可证开源发布。")
-                    AboutLine(
-                        "原版项目",
-                        "「DIY NFC卡面图片」v2.4，作者 zhizi42，GPL-3.0；" +
-                            "github.com/Xposed-Modules-Repo/com.zhizi42.diymiuicard",
-                    )
-                    AboutLine(
-                        "Miuix 0.9.4",
-                        "HyperOS 风格 Compose 组件库，作者 Yukonga，Apache-2.0；" +
-                            "github.com/miuix-kotlin-multiplatform/miuix",
-                    )
-                    AboutLine(
-                        "LSPosed / libxposed API 101",
-                        "Xposed 模块框架，GPL-3.0（LSPosed）/ Apache-2.0（libxposed-api）；" +
-                            "github.com/LSPosed/LSPosed · github.com/LibXposed/libxposed-api",
-                    )
-                    AboutLine(
-                        "DexKit 2.3.0",
-                        "运行时 Dex 方法定位，作者 LuckyPray，Apache-2.0；" +
-                            "github.com/LuckyPray/DexKit",
-                    )
-                    AboutLine(
-                        "AndroidX / Compose / Coil 3",
-                        "Jetpack Compose、Activity Compose、Coil 3 图片加载，Apache-2.0。",
-                    )
-
                 }
             }
         }
@@ -473,6 +411,72 @@ fun AboutScreen(
             }
         }
 
+        // 功能
+        item(key = "features") {
+            Column {
+                SmallTitle(text = "功能")
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    cornerRadius = 20.dp,
+                    insideMargin = PaddingValues(20.dp),
+                ) {
+                    AboutLine("高质量缩放", "缩放感知 Lanczos3 + 线性光，960×606 输出，细线/文字不再锯齿。")
+                    AboutLine("替换方式", "替换图复制到卡包私有目录后以 file:// 加载（复制步骤需要 root）。")
+                    AboutLine("小米智能卡", "在 Xiaomi 15 Pro / HyperOS（LSPosed 2.2.1）上真机验证通过。")
+                    AboutLine("一加钱包", "在 OnePlus 15 / ColorOS 17（LSPosed 2.2.1）上真机验证通过。")
+                    AboutLine("外观可调", "澎湃蓝 / 动态取色 / 8 个预设色 / 深色模式 / 过渡动画。")
+                    AboutLine("演示模式", "没装卡包也能完整体验选图、裁剪、卡面标志流程。")
+                }
+            }
+        }
+
+        // 开源与引用
+        item(key = "oss") {
+            Column {
+                SmallTitle(text = "开源与引用")
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    cornerRadius = 20.dp,
+                    insideMargin = PaddingValues(20.dp),
+                ) {
+                    AboutLine("本应用", "卡面工坊 · Miuix 重制版，以 GPL-3.0 许可证开源发布。")
+                    AboutLine(
+                        "在线卡面来源",
+                        "卡面库图片来自 Hibank（hi.my-api.cn），版权归原权利人所有，仅供个人使用；" +
+                            "应用不镜像、不打包这些图片，只在需要时下载到本机。",
+                    )
+                    AboutLine(
+                        "原版项目",
+                        "「DIY NFC卡面图片」v2.4，作者 zhizi42，GPL-3.0；" +
+                            "github.com/Xposed-Modules-Repo/com.zhizi42.diymiuicard",
+                    )
+                    AboutLine(
+                        "Miuix 0.9.4",
+                        "HyperOS 风格 Compose 组件库，作者 Yukonga，Apache-2.0；" +
+                            "github.com/miuix-kotlin-multiplatform/miuix",
+                    )
+                    AboutLine(
+                        "LSPosed / libxposed API 101",
+                        "Xposed 模块框架，GPL-3.0（LSPosed）/ Apache-2.0（libxposed-api）；" +
+                            "github.com/LSPosed/LSPosed · github.com/LibXposed/libxposed-api",
+                    )
+                    AboutLine(
+                        "DexKit 2.3.0",
+                        "运行时 Dex 方法定位，作者 LuckyPray，Apache-2.0；" +
+                            "github.com/LuckyPray/DexKit",
+                    )
+                    AboutLine(
+                        "AndroidX / Compose / Coil 3",
+                        "Jetpack Compose、Activity Compose、Coil 3 图片加载，Apache-2.0。",
+                    )
+                }
+            }
+        }
+
         // 兼容性与免责声明
         item(key = "compat") {
             Column {
@@ -490,6 +494,10 @@ fun AboutScreen(
                             "其他机型、系统版本或卡包版本可能存在差异。",
                     )
                     AboutLine(
+                        "一加钱包",
+                        "在 OnePlus 15 / ColorOS 17（LSPosed 2.2.1）上真机验证通过。",
+                    )
+                    AboutLine(
                         "其他风险",
                         "本应用只修改卡包展示图，不涉及支付、余额与刷卡逻辑；" +
                             "因使用本应用产生的任何问题（包括但不限于卡包异常、账号风险）由使用者自行承担。",
@@ -498,42 +506,10 @@ fun AboutScreen(
                         "使用限制",
                         "请勿将本应用用于伪造证件、支付欺诈等任何违法用途。",
                     )
-                }
-            }
-        }
-
-        // 隐私
-        item(key = "privacy") {
-            Column {
-                SmallTitle(text = "隐私")
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    cornerRadius = 20.dp,
-                    insideMargin = PaddingValues(20.dp),
-                ) {
-                    AboutLine("不收集数据", "没有统计、没有广告、不请求账号信息；网络只用于加载卡面原始图片地址。")
-                    AboutLine("只在本机处理", "裁剪 / 缩放 / 合成全部在手机本地完成，替换图存在应用私有目录。")
-                }
-            }
-        }
-
-        // 支持作者（不再放 QQ 群）
-        item(key = "support") {
-            Column {
-                SmallTitle(text = "支持作者")
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp),
-                    cornerRadius = 20.dp,
-                    insideMargin = PaddingValues(20.dp),
-                ) {
-                    Text(
-                        text = "项目完全免费、无付费功能、无广告。用得顺手的话，把「卡面工坊」推荐给需要的人就是最好的支持。",
-                        style = MiuixTheme.textStyles.body2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    AboutLine(
+                        "隐私",
+                        "没有统计、没有广告、不请求账号信息；裁剪 / 缩放 / 合成全部在手机本地完成，" +
+                            "替换图存在应用私有目录。",
                     )
                 }
             }
@@ -549,66 +525,6 @@ fun AboutScreen(
                     .fillMaxWidth()
                     .padding(top = 20.dp, bottom = 8.dp),
             )
-        }
-    }
-
-    availableUpdate?.let { release ->
-        top.yukonga.miuix.kmp.overlay.OverlayDialog(
-            show = true,
-            title = "发现新版本 v${release.versionName}",
-            summary = "当前版本：v$version\nAPK：${"%.1f".format(release.size / 1048576.0)} MiB\n" +
-                "SHA-256：${release.sha256 ?: "发布方未提供，暂不启用校验下载"}\n\n" + release.body.ifBlank { "暂无更新说明" }.take(4000),
-            onDismissRequest = { availableUpdate = null },
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TextButton(text = "下载并校验", enabled = release.sha256 != null && downloadJob?.isActive != true, onClick = {
-                    availableUpdate = null
-                    downloadJob = scope.launch {
-                        downloadProgress = "开始下载…"
-                        try {
-                            val file = withContext(Dispatchers.IO) {
-                                com.dsh.miuix.cardface.core.UpdateDownloader.download(context, release) { done, total ->
-                                    scope.launch { downloadProgress = "已下载 ${done * 100 / total}% · ${"%.1f".format(total / 1048576.0)} MiB" }
-                                }
-                            }
-                            downloadedUpdate = release to file
-                        } catch (cancel: kotlinx.coroutines.CancellationException) { throw cancel }
-                        catch (t: Throwable) { info = "更新下载失败" to (t.message ?: "网络或存储异常") }
-                        finally { downloadProgress = null }
-                    }
-                }, modifier = Modifier.weight(1f))
-                TextButton(text = "稍后", onClick = { availableUpdate = null }, modifier = Modifier.weight(1f))
-            }
-        }
-    }
-
-    if (downloadProgress != null) {
-        top.yukonga.miuix.kmp.overlay.OverlayDialog(show = true, title = "下载并校验更新",
-            summary = downloadProgress.orEmpty() + "\n下载后校验大小、SHA-256、包名、版本与签名。",
-            onDismissRequest = { downloadJob?.cancel() }) {
-            TextButton(text = "取消", onClick = { downloadJob?.cancel() })
-        }
-    }
-    downloadedUpdate?.let { (release, file) ->
-        top.yukonga.miuix.kmp.overlay.OverlayDialog(show = true, title = "更新校验通过",
-            summary = "v${release.versionName}\n大小、SHA-256、包名、版本与当前签名均已核对。点击安装后由系统安装器确认。",
-            onDismissRequest = { downloadedUpdate = null }) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                TextButton(text = "安装", onClick = {
-                    scope.launch {
-                        try {
-                            withContext(Dispatchers.IO) {
-                                com.dsh.miuix.cardface.core.UpdateIntegrity.check(release.size, file.length(), release.sha256,
-                                    com.dsh.miuix.cardface.core.BackupArchive.sha(file))
-                                com.dsh.miuix.cardface.core.UpdateDownloader.validateApk(context, file, release.versionName)
-                            }
-                            com.dsh.miuix.cardface.core.UpdateDownloader.install(context, file)
-                            downloadedUpdate = null
-                        } catch (t: Throwable) { info = "安装检查" to (t.message ?: "安装器启动失败") }
-                    }
-                }, modifier = Modifier.weight(1f))
-                TextButton(text = "稍后", onClick = { downloadedUpdate = null }, modifier = Modifier.weight(1f))
-            }
         }
     }
 
@@ -688,6 +604,27 @@ fun BlacklistScreen(model: AppModel, innerPadding: PaddingValues, onBack: () -> 
                     insideMargin = PaddingValues(16.dp),
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        val storeUri = item.replacement?.let {
+                            runCatching { model.store.fileUri(it) }.getOrDefault("")
+                        }
+                        val imageModel = when {
+                            item.replacement.isNullOrBlank() -> item.url
+                            com.dsh.miuix.cardface.ui.DeviceBridge.isRemote(item.replacement) -> item.replacement
+                            !storeUri.isNullOrBlank() -> storeUri
+                            else -> item.url
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(width = 96.dp, height = 60.dp)
+                                .clip(RoundedCornerShape(10.dp)),
+                        ) {
+                            AppAsyncImage(
+                                model = imageModel,
+                                contentDescription = item.displayName,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                        Spacer(Modifier.size(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = item.displayName,
@@ -833,6 +770,421 @@ fun DevHookScreen(model: AppModel, innerPadding: PaddingValues, onBack: () -> Un
                     },
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        }
+    }
+}
+
+/** 版本与更新：从设置里的「版本」入口打开。 */
+@Composable
+fun VersionScreen(
+    model: AppModel,
+    innerPadding: PaddingValues,
+    onBack: () -> Unit,
+    onOpenChangelog: () -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val prefs = model.prefs
+    val version = remember { DeviceBridge.versionName(context) }
+    var checking by remember { mutableStateOf(false) }
+    var info by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var autoCheckUpdate by remember { mutableStateOf(prefs.autoCheckUpdate) }
+    var pendingUpdate by remember { mutableStateOf<Updates.Release?>(null) }
+    var updateProgress by remember { mutableStateOf(-1) }
+
+    fun openUrl(url: String) {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .onFailure { model.notify("没有可打开链接的应用") }
+    }
+
+    fun checkUpdate() {
+        if (checking) return
+        checking = true
+        scope.launch {
+            val latest = withContext(Dispatchers.IO) { Updates.fetchLatest() }
+            checking = false
+            if (latest == null) {
+                info = "检查更新" to "检查失败，请检查网络后重试。"
+            } else if (latest.versionName.isNotBlank() && Updates.isNewer(latest.versionName, version)) {
+                pendingUpdate = latest
+            } else {
+                info = "已是最新版本" to "当前 v$version 已经是最新版本。"
+            }
+        }
+    }
+
+    fun showAnnouncement() {
+        scope.launch {
+            val latest = withContext(Dispatchers.IO) { Updates.fetchLatest() }
+            info = if (latest == null) {
+                "更新公告" to "获取失败，请检查网络后重试。"
+            } else {
+                "更新公告 · v${latest.versionName}" to latest.body.ifBlank { "暂无更新说明" }
+            }
+        }
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(
+            top = innerPadding.calculateTopPadding(),
+            bottom = innerPadding.calculateBottomPadding() + 28.dp,
+        ),
+    ) {
+        item(key = "header") { BackHeader(title = "版本与更新", onBack = onBack) }
+
+        item(key = "version") {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                cornerRadius = 20.dp,
+                insideMargin = PaddingValues(20.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircleIcon(
+                        imageVector = MiuixIcons.BankCards,
+                        containerColor = MiuixTheme.colorScheme.primaryContainer,
+                        contentColor = MiuixTheme.colorScheme.onPrimaryContainer,
+                        size = 56.dp,
+                        iconSize = 30.dp,
+                    )
+                    Spacer(Modifier.size(14.dp))
+                    Column {
+                        Text(
+                            text = "卡面工坊",
+                            style = MiuixTheme.textStyles.headline2,
+                            fontWeight = FontWeight.Bold,
+                            color = MiuixTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = "v$version · 内部 ${com.dsh.miuix.cardface.core.BuildInfo.INTERNAL_VERSION}",
+                            style = MiuixTheme.textStyles.footnote1,
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                }
+            }
+        }
+
+        item(key = "update") {
+            Column {
+                SmallTitle(text = "更新")
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    cornerRadius = 20.dp,
+                    insideMargin = PaddingValues(vertical = 4.dp),
+                ) {
+                    ArrowPreference(
+                        title = "检查更新",
+                        summary = if (checking) "正在检查…" else "当前版本 v$version",
+                        onClick = { checkUpdate() },
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MiuixTheme.colorScheme.dividerLine,
+                    )
+                    ArrowPreference(
+                        title = "更新公告",
+                        summary = "查看历史版本的更新日志",
+                        onClick = onOpenChangelog,
+                    )
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                        color = MiuixTheme.colorScheme.dividerLine,
+                    )
+                    SwitchPreference(
+                        title = "自动检查更新",
+                        summary = "启动时检查 Cokelce/cardface-miuix，包含适配测试版",
+                        checked = autoCheckUpdate,
+                        onCheckedChange = {
+                            autoCheckUpdate = it
+                            prefs.autoCheckUpdate = it
+                        },
+                    )
+                }
+            }
+        }
+
+        item(key = "project") {
+            Column {
+                SmallTitle(text = "项目")
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    cornerRadius = 20.dp,
+                    insideMargin = PaddingValues(0.dp),
+                ) {
+                    ArrowPreference(
+                        title = "项目地址",
+                        summary = "github.com/Cokelce/cardface-miuix",
+                        onClick = { openUrl("https://github.com/Cokelce/cardface-miuix") },
+                    )
+                }
+            }
+        }
+
+        item(key = "footer") {
+            Text(
+                text = "GPL-3.0 · 更新信息来自 GitHub Releases",
+                style = MiuixTheme.textStyles.footnote2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+            )
+        }
+    }
+
+    val update = pendingUpdate
+    if (update != null) {
+        OverlayDialog(
+            show = true,
+            title = "发现新版本 v${update.versionName}",
+            summary = "当前 v$version",
+            onDismissRequest = { pendingUpdate = null; updateProgress = -1 },
+        ) {
+            Text(
+                text = if (updateProgress >= 0) "正在下载… $updateProgress%" else update.body.ifBlank { "暂无更新说明" },
+                style = MiuixTheme.textStyles.footnote1,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            )
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(
+                    text = "取消",
+                    onClick = { pendingUpdate = null; updateProgress = -1 },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = if (update.downloadUrl.isBlank()) "打不开下载地址" else if (updateProgress >= 0) "下载中…" else "下载并安装",
+                    onClick = {
+                        if (update.downloadUrl.isBlank()) return@TextButton
+                        if (updateProgress >= 0) return@TextButton
+                        updateProgress = 0
+                        scope.launch {
+                            val apk = withContext(Dispatchers.IO) {
+                                com.dsh.miuix.cardface.core.UpdateInstaller.download(context, update.downloadUrl) { p ->
+                                    updateProgress = p
+                                }
+                            }
+                            updateProgress = -1
+                            if (apk == null) {
+                                model.notify("下载失败，请检查网络")
+                                return@launch
+                            }
+                            pendingUpdate = null
+                            if (!com.dsh.miuix.cardface.core.UpdateInstaller.canInstall(context)) {
+                                com.dsh.miuix.cardface.core.UpdateInstaller.openInstallPermission(context)
+                                model.notify("请允许安装未知来源应用后重试")
+                            } else if (!com.dsh.miuix.cardface.core.UpdateInstaller.install(context, apk)) {
+                                model.notify("无法调起安装器")
+                            }
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+
+    val infoValue = info
+    if (infoValue != null) {
+        InfoDialog(
+            show = true,
+            title = infoValue.first,
+            message = infoValue.second,
+            onDismiss = { info = null },
+        )
+    }
+}
+
+private data class ChangelogGroup(val title: String, val lines: List<String>)
+
+/**
+ * 更新公告约定：「新增功能」在前，「修改问题」在后。
+ * 兼容旧版本没有分组的正文（当成「更新内容」逐条展示）。
+ */
+private fun parseChangelog(body: String): List<ChangelogGroup> {
+    val groups = LinkedHashMap<String, MutableList<String>>()
+    var current: String? = null
+    body.lineSequence().forEach { raw ->
+        val line = raw.trim()
+        if (line.startsWith("##")) {
+            val title = line.removePrefix("##").trim()
+            current = when {
+                title.contains("新增") || title.contains("功能") -> "新增功能"
+                title.contains("修复") || title.contains("修改") ||
+                    title.contains("Bug") || title.contains("bug") ||
+                    title.contains("问题") -> "修改问题"
+                title.contains("更新") -> "更新内容"
+                else -> title.ifBlank { "更新内容" }
+            }
+            groups.getOrPut(current!!) { mutableListOf() }
+            return@forEach
+        }
+        if (line.isEmpty() || line.startsWith("#")) return@forEach
+        val item = line.removePrefix("- ").removePrefix("* ").trim()
+        if (item.isEmpty()) return@forEach
+        groups.getOrPut(current ?: "更新内容") { mutableListOf() }.add(item)
+    }
+    val order = listOf("新增功能", "修改问题", "更新内容")
+    return groups.entries
+        .sortedBy { entry -> order.indexOf(entry.key).let { if (it < 0) order.size else it } }
+        .map { ChangelogGroup(it.key, it.value) }
+        .filter { it.lines.isNotEmpty() }
+}
+
+/** 更新日志：参考 DuJi 的版本列表样式（日期 + 版本 + 条目）。 */
+@Composable
+fun ChangelogScreen(
+    innerPadding: PaddingValues,
+    onBack: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var loading by remember { mutableStateOf(true) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var releases by remember { mutableStateOf<List<Updates.ReleaseEntry>>(emptyList()) }
+    var reload by remember { mutableStateOf(0) }
+
+    LaunchedEffect(reload) {
+        loading = true
+        error = null
+        val result = withContext(Dispatchers.IO) { Updates.fetchReleases() }
+        if (result == null) {
+            error = "获取更新日志失败，请检查网络后重试。"
+        } else {
+            // GitHub 返回顺序按创建时间，这里按版本号从新到旧排（和 DuJi 一致）。
+            releases = result.sortedWith { a, b ->
+                when {
+                    Updates.isNewer(a.versionName, b.versionName) -> -1
+                    Updates.isNewer(b.versionName, a.versionName) -> 1
+                    else -> 0
+                }
+            }
+        }
+        loading = false
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(
+            top = innerPadding.calculateTopPadding(),
+            bottom = innerPadding.calculateBottomPadding() + 28.dp,
+        ),
+    ) {
+        item(key = "header") { BackHeader(title = "更新日志", onBack = onBack) }
+
+        if (loading) {
+            item(key = "loading") {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    cornerRadius = 20.dp,
+                    insideMargin = PaddingValues(20.dp),
+                ) {
+                    Text(
+                        text = "正在获取更新日志…",
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+            }
+        }
+
+        val err = error
+        if (err != null) {
+            item(key = "error") {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    cornerRadius = 20.dp,
+                    insideMargin = PaddingValues(20.dp),
+                ) {
+                    Text(
+                        text = err,
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    TextButton(
+                        text = "重试",
+                        onClick = { reload++ },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            }
+        }
+
+        items(releases.size, key = { "release-${releases[it].versionName}-${releases[it].date}" }) { index ->
+            val release = releases[index]
+            val groups = parseChangelog(release.body)
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                cornerRadius = 20.dp,
+                insideMargin = PaddingValues(18.dp),
+            ) {
+                Text(
+                    text = release.date,
+                    style = MiuixTheme.textStyles.footnote2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text = "v${release.versionName}",
+                    style = MiuixTheme.textStyles.headline2,
+                    fontWeight = FontWeight.Bold,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+                if (groups.isEmpty()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = "暂无更新说明",
+                        style = MiuixTheme.textStyles.body2,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                } else {
+                    groups.forEachIndexed { index, group ->
+                        if (index > 0) {
+                            Spacer(Modifier.height(14.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.dp)
+                                    .background(
+                                        MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = 0.45f),
+                                    ),
+                            )
+                            Spacer(Modifier.height(14.dp))
+                        } else {
+                            Spacer(Modifier.height(12.dp))
+                        }
+                        Text(
+                            text = group.title,
+                            style = MiuixTheme.textStyles.body2,
+                            fontWeight = FontWeight.Bold,
+                            color = MiuixTheme.colorScheme.primary,
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        group.lines.forEach { line ->
+                            Text(
+                                text = line,
+                                style = MiuixTheme.textStyles.body2,
+                                color = MiuixTheme.colorScheme.onSurface,
+                                modifier = Modifier.padding(bottom = 4.dp),
+                            )
+                        }
+                    }
+                }
             }
         }
     }

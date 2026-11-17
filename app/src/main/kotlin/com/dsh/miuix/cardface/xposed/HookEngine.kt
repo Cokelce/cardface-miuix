@@ -64,10 +64,6 @@ class HookEngine(
     private var pendingCustomHook = false
 
     fun start() {
-        if (osType == MethodLocator.OS_ONEPLUS) {
-            runCatching { DetailCoverHook(module, classLoader).install() }
-                .onFailure { XLog.w("detail cover hook install failed", it) }
-        }
         XLog.i("cardface hook starting: osType=$osType package=$walletPackage api=${module.apiVersion}")
         settingsRepo.init()
 
@@ -314,8 +310,10 @@ class HookEngine(
                 val status = item?.javaClass?.getMethod("getCardStatus")?.invoke(item)?.toString()
                 val aid = item?.javaClass?.getMethod("getAid")?.invoke(item)?.toString()
                 val unique = item?.javaClass?.getMethod("getUniqueCardId")?.invoke(item)?.toString()
-                val image = item?.javaClass?.getMethod("getCardImg")?.invoke(item)?.toString()
-                    ?.takeIf { it.isNotBlank() }
+                val image = listOf("getCardImg", "getNewCardImg").firstNotNullOfOrNull { getter ->
+                    runCatching { item?.javaClass?.getMethod(getter)?.invoke(item) as? String }
+                        .getOrNull()?.trim()?.takeIf { it.isNotEmpty() && !it.equals("null", true) }
+                }
                 val name = com.dsh.miuix.cardface.core.CardNameResolver.fromCard(item)
                 val candidate = com.dsh.miuix.cardface.core.OwnedCardPolicy.Candidate(type, status, aid, unique, image, name)
                 if (com.dsh.miuix.cardface.core.OwnedCardPolicy.accept(candidate)) image!!.trim() to name else null
@@ -593,7 +591,7 @@ class HookEngine(
             if (settingsRepo.isReplacementMaterial(url)) return ""
             val onePlusDisplayPath = osType == MethodLocator.OS_ONEPLUS && !trackNew
             val env = UrlMapper.Env(
-                isMiui = osType == MethodLocator.OS_MIUI,
+                isMiui = false,
                 showAllCards = settings.showAllCards,
                 testMode = settings.testMode,
                 compatMode = settings.compatMode,

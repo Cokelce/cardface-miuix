@@ -1,81 +1,13 @@
-# 卡面工坊 · 一加钱包适配版
-
-基于 [MiamBao/cardface-miuix](https://github.com/MiamBao/cardface-miuix) 的 Fork，保留原项目的 Miuix 界面、图库、裁剪、Lanczos3 图像管线及小米智能卡支持。
-
-## 下载
-
-[下载当前适配版 APK](https://github.com/Cokelce/cardface-miuix/releases/download/v1.0.5-oneplus.11/CardFace-1.0.5-oneplus.11.apk) · [全部版本](https://github.com/Cokelce/cardface-miuix/releases)
-
-### oneplus.11：清空替换后旧图片条目残留修复
-
-- 替换素材标记与当前映射分开持久保存。清空一张卡时解除映射、移除列表里的旧替换图片条目，不再将其当成原卡重新采集。
-- 兼容已有 asset_origins 来源历史；标记随备份导出/恢复，清理不按同名或第三方域名猜测。
-- 缺少来源记录的早期条目可长按→“移除误识别的替换图”，明确确认后标记，保留其他卡片和共用图片。
-- 首页仍为简约双列；159 项应用测试、21 项图像测试、21 项真机测试通过（含显式用户确认的旧条目迁移）。本机原官方卡面保留、旧素材条目已移除；钱包数据库未改写。
-
-### oneplus.10 热修复
-
-修复 Root 已授权仍在保存/同步时误报失败的问题：当前挂载环境下 `restorecon /proc/1/root/...` 的规范路径解析失败，复制已完成却返回错误。改为继承目标应用目录的准确 SELinux 标签，并读回核对属主、标签与文件哈希，不关闭 SELinux、不放宽权限。
-
-真机确认不加标志及京津冀、上海、泉城通、银川四种标志输出均可合成保存并解码；标志不是本次保存失败的触发根因。新增真实快照同步及 `/proc/1/root` 路径首拷/重复/更换内容回归，17 项真机测试通过（含显式启用的当前配置快照校验）；151 项应用测试、21 项图像测试通过。
-
-### 本次更新（oneplus.9 稳定性修复）
-
-- 一加钱包模型 Getter 只采集原地址/卡名，返回值不替换；图片展示入口执行替换，避免替换地址进入数据库保存链路。
-- 本地图片与钱包副本先校验，采用临时文件、SHA-256 校验和原子替换；损坏副本可重新同步。
-- 保存/同步失败不再提示已应用；映射快照失败时补偿回滚，旧图片保留。
-- 清空单卡不删除源图片；不同 UUID/不同主机/仅同文件名的独立卡不再被推断为相同卡。
-- 版本化原子映射快照，修复远程空对象和 Provider 故障时的回退；网络图编辑与清空也更新快照。
-- 有明确唯一卡标识时记录其原图地址变化；无明确标识不猜测。历史替换地址仅在来源唯一且已知时于展示层纠正，不改钱包数据库。
-
-### 验证范围
-
-151 项应用单元测试、21 项图像测试、14 项真机隔离测试通过；本机钱包 5.52.0 已回报新版 8 个采集入口、5 个展示入口，无缺失入口。真实多卡长时间使用和钱包升级场景仍需验证；没有对钱包数据库执行修复或批量改写。旧版本若已将不明来源地址持久化，缺少原始地址时不会自动猜测恢复。
-
-[oneplus.8 修复前基线](https://github.com/Cokelce/cardface-miuix/releases/tag/v1.0.5-oneplus.8) 保留原包与已知问题说明。
-
-## 一加钱包适配
-
-- 目标钱包：`com.finshell.wallet`，基于 **5.52.0** 版本分析适配。
-- 适配版包名：`io.github.miambao.cardface.oneplus`，与上游原版共存。
-- 当前版本：`1.0.5-oneplus.11`（versionCode `26`）。
-- 采集 `NfcCard`、`NfcCardDetail` 等卡片模型中的原始卡面 URL，接入原项目的编辑、图片映射与私有目录同步流程。
-- 更新关于页和使用说明，保留上游署名及 GPL-3.0 许可证。
-
-### 使用
-
-1. 安装适配版，在 LSPosed 中启用“卡面工坊·一加适配”。
-2. 一加设备选择作用域 **钱包（com.finshell.wallet）**；小米设备选择 **小米智能卡**。
-3. 重启钱包并浏览卡面，再回到工坊选择图片、裁剪、保存并应用。
-
-### 验证状态
-
-已完成 APK 构建、安装版本核对及应用启动检查；123 项应用测试、21 项图像管线测试及 5 项隔离真机测试通过。钱包内实际注入及换图效果仍待真机验证，其他钱包版本兼容性待验证。
-
-### 构建适配版
-
-Android SDK Platform 37.0、Build Tools 37.0.0，Gradle Wrapper 9.5.1，AGP 9.3.1，Kotlin 2.4.20。配置 `local.properties` 中的 `sdk.dir` 后运行：
-
-```sh
-./gradlew :app:assembleDebug :app:testDebugUnitTest :imaging:test
-```
-
-手机 ARM/chroot 环境如需自定义 AAPT2，可通过本机的 Gradle 属性设置 `android.aapt2FromMavenOverride`；仓库不硬编码本机工具路径。图像对比测试需要可用的 Java AWT 字体库。
-
-原项目：MiamBao；原版 DIY NFC：zhizi42；原版重构署名按上游保留；一加钱包适配：Eta。
-
----
-
-## 上游项目说明
+> 本分支为 **一加钱包适配版**，唯一目标 `com.finshell.wallet`。自动同步与构建说明见 [一加适配自动化](docs/ONEPLUS_AUTOMATION.md)。上游项目为 [MiamBao/cardface-miuix](https://github.com/MiamBao/cardface-miuix)，原项目说明和许可证保留如下。
 
 <p align="center">
-  <img src="docs/icon.png" width="112" alt="卡面工坊"/>
+  <img src="docs/icon.png" alt="卡面工坊" width="112"/>
 </p>
 
 <h1 align="center">卡面工坊</h1>
 
 <p align="center">
-  把小米智能卡里千篇一律的卡面，换成你自己喜欢的图片<br/>
+  给小米智能卡换一张喜欢的卡面<br/>
   <sub>LSPosed 模块 · Miuix（HyperOS）界面 · Lanczos3 图像管线</sub>
 </p>
 
@@ -88,57 +20,71 @@ Android SDK Platform 37.0、Build Tools 37.0.0，Gradle Wrapper 9.5.1，AGP 9.3.
 
 ---
 
-## 截图
+<p align="center">
+  <img src="docs/promo/00-cover.jpg" alt="卡面工坊 2.0" width="820"/>
+</p>
 
-| 首页 | 设置 |
+## 这是什么
+
+「卡面工坊」是一个给小米智能卡换卡面的 LSPosed 模块。不用改系统，把你喜欢的画、角色、照片，变成卡包里每天都会看到的那一张卡。
+
+这个项目最早是「DIY NFC 卡面图片」的界面与体验重构：原版功能没问题，但 UI 比较粗糙，风格也旧了。这次按 Miuix 的 HyperOS 风格把整套界面重做了一遍，图片缩放、裁剪这些细节也重新写了一次。
+
+如果你没有 root / LSPosed，这个 App 无法工作；如果你只是想让卡面好看一点，它大概是最省事的方式之一。
+
+## 2.0 更新
+
+- **在线卡面库**：银行卡面、交通卡面、IP 联动、二次元、特摄；支持分类、搜索、收藏、最近使用、A-Z 索引、IP 跳转。
+- **海报分享**：把卡面生成一张明信片海报，横版 2880×2160 / 竖版 2160×2880，三种版式，四套配色，可保存相册或直接分享。
+- **本地图库**：自己的图导入、裁剪、保存，全程在本机处理，不上传。
+- **更干净的设置**：按功能重新分组，删掉冗余开关；隐藏桌面图标、黑名单、主题色、重启卡包、诊断信息都在对应位置。
+- **稳定性修复**：改一张卡面不再影响其他卡面；交通卡图标不再串图；屏蔽银行卡广告示意图；修复 DexKit 失效导致卡面恢复默认。
+
+## 界面
+
+| 卡面主页 | 本地图库 |
 |---|---|
-| ![首页](docs/screens/01-home.jpg) | ![设置](docs/screens/02-settings.jpg) |
+| ![卡面主页](docs/promo/01-home.jpg) | ![本地图库](docs/promo/02-gallery.jpg) |
 
-| 编辑卡面 | 图库 |
+| 设置 | 在线卡面库 |
 |---|---|
-| ![编辑](docs/screens/03-editor.jpg) | ![图库](docs/screens/04-gallery.jpg) |
+| ![设置](docs/promo/03-settings.jpg) | ![在线卡面库](docs/promo/04-cloud.jpg) |
 
-| 关于 |
-|---|
-| ![关于](docs/screens/05-about.jpg) |
-
-### 原版界面
-
-下面是本项目所基于的原版「DIY NFC卡面图片」v2.4（作者 zhizi42）的界面，仅作来源说明 / 对比用：
-
-![原版界面（DIY NFC卡面图片 v2.4）](docs/screens/06-original-ui.jpg)
-
-> 原版仓库：<https://github.com/Xposed-Modules-Repo/com.zhizi42.diymiuicard>
+| 海报分享 | 2.0 更新 |
+|---|---|
+| ![海报分享](docs/promo/05-poster.jpg) | ![2.0 更新](docs/promo/06-updates.jpg) |
 
 ## 功能
 
-- **替换卡面**：把图片合成为 960×606 PNG，复制到卡包私有目录后以 `file://` 交给卡包加载；
-  兼容卡包 Glide 加载链路（反编译定位 `CustomGlideUrl` 工厂方法与 `RequestManager` 重载）。
-- **高质量缩放**：缩放感知 Lanczos3 + sRGB 线性光重采样，细线 / 文字不再有锯齿（原版为最近邻缩放）。
-- **图库 / 裁剪 / 卡面标志**：3 列图库、160:101 固定比例裁剪（双指缩放、拖动、缩放按钮）、
-  京津冀 / 上海 / 泉城通 / 银川 标志、圆角裁切。
-- **Miuix（HyperOS）界面**：大圆角状态卡、灰底白卡分组、澎湃蓝 / 动态取色 / 8 个预设色 /
-  深色模式 / 过渡动画、底部悬浮导航。
-- **其他**：卡面重命名、隐藏桌面图标（带通知入口防丢）、hook 缓存清理、一键重启卡包。
+- **替换卡面**：把图片合成为 960×606 PNG，复制到卡包私有目录后以 `file://` 交给卡包加载，兼容卡包 Glide 加载链路。
+- **高质量缩放**：缩放感知 Lanczos3 + sRGB 线性光重采样，细线和文字不再有明显锯齿。
+- **图库 / 裁剪 / 卡面标志**：3 列图库、160:101 固定比例裁剪（双指缩放、拖动）、京津冀 / 上海 / 泉城通 / 银川标志、圆角裁切。
+- **在线卡面库**：Hibank 图片源，分类浏览、搜索、收藏、最近使用、下载后直接裁剪应用。
+- **海报分享**：横竖版、三种版式、四套配色，生成 4:3 高清海报。
+- **Miuix（HyperOS）界面**：大圆角卡片、分组列表、澎湃蓝 / 动态取色 / 多套主题色、深色模式、过渡动画、底部悬浮导航。
+- **维护功能**：一键重启卡包、数据备份 / 恢复、导出诊断信息、清除 hook 缓存、隐藏桌面图标、卡面重命名、黑名单。
 
 ## 环境要求
 
-- Android 8.0+（minSdk 26，targetSdk 36）
+- Android 8.0+（minSdk 26，targetSdk 36，compileSdk 37）
 - 已 root，并安装 **LSPosed**（libxposed API 101+）
 - 卡包：小米智能卡（`com.miui.tsmclient`）
 - 参考验证环境：Xiaomi 15 Pro / HyperOS 4 / LSPosed 2.2.1 + 小米智能卡
 
 ## 安装与使用
 
-1. 安装 Release 里的 `CardFace-v1.0.5.apk`。
+1. 下载 Release 里的 `CardFace-v2.0.0.apk` 并安装。
 2. 在 LSPosed 里启用「卡面工坊」，作用域勾选：小米智能卡。
-3. 打开卡包，把卡面浏览一遍（让 hook 记录到卡面地址）。
-4. 回到「卡面工坊」→ 点一张卡面 → 从相册选图 / 从图库选 → 裁剪 / 加标志 → 保存并应用。
-5. 重启卡包（保存成功后可一键重启），卡面即生效。
+3. 打开卡包，把卡面浏览一遍，让 hook 记录到卡面地址。
+4. 回到「卡面工坊」→ 点一张卡面 → 从相册 / 在线卡面库选图 → 裁剪 / 加标志 → 保存并应用。
+5. 在设置里点「一键重启卡包」，卡面即生效。
 
-> **隐藏 / 寄生模式的 LSPosed**：部分设备的管理器没有桌面图标，也无法被第三方 App 直接打开
-> （LSPosed 用进程内随机 UUID 广播拉起管理器）。此时从通知栏的「Xposed 模块已更新 / LSPosed」通知进入管理器，
-> 长按模块 →「模块设置」即可打开本应用。App 里点「打开 LSPosed」也会给出这个提示。
+> **隐藏 / 寄生模式的 LSPosed**：部分设备的管理器没有桌面图标，也无法被第三方 App 直接打开。此时从通知栏的「Xposed 模块已更新 / LSPosed」通知进入管理器，长按模块 →「模块设置」即可打开本应用。
+
+## 下载
+
+- GitHub Releases：<https://github.com/MiamBao/cardface-miuix/releases/latest>
+- LSPosed 模块仓库：<https://github.com/Xposed-Modules-Repo/io.github.miambao.cardface>
 
 ## 构建
 
@@ -161,14 +107,13 @@ cp keystore.properties.example keystore.properties
 ```
 app/       Android 应用（Compose + Miuix），含 Xposed 模块入口
 imaging/   纯 JVM 图像管线（Lanczos3 降采样、缩放、合成），可单测
-docs/      规格、进度记录、截图
+docs/      规格、截图与宣传图
 ```
 
 ## 免责声明与兼容性
 
-- **小米智能卡**：在上述参考环境验证通过，其他机型 / 系统 / 卡包版本可能存在差异。
-- 替换图片需要把图复制进卡包私有目录（`file://`），**复制步骤需要 root**；没有 root 时会退回 `content://`，
-  但部分卡包版本不认。
+- **小米智能卡**：只在上述参考环境验证通过，其他机型 / 系统 / 卡包版本可能存在差异。
+- 替换图片需要把图复制进卡包私有目录（`file://`），**复制步骤需要 root**；没有 root 时会退回 `content://`，但部分卡包版本不认。
 - 本应用只修改卡包展示图，不涉及支付、余额与刷卡逻辑；因使用本应用产生的任何问题由使用者自行承担。
 - 请勿用于伪造证件、支付欺诈等任何违法用途。
 
@@ -186,4 +131,4 @@ docs/      规格、进度记录、截图
 
 - **作者**：MiamBao
 - **重构与实现**：DeepSeek（AI 编程助手）—— Miuix 界面重构、卡面 hook 链路、图像管线与性能优化
-- 以及原版作者 zhizi42 与上述开源项目的作者们
+- 原版作者 zhizi42，以及上述开源项目的作者们

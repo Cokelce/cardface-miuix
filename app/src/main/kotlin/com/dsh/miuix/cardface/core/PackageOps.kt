@@ -34,7 +34,7 @@ object PackageOps {
     }
 
     fun installedWallets(context: Context): List<WalletKind> =
-        WalletKind.entries.filter { isInstalled(context, it.packageName) }
+        if (isInstalled(context, WalletKind.ONEPLUS.packageName)) listOf(WalletKind.ONEPLUS) else emptyList()
 
     fun primaryWallet(context: Context): WalletKind? = installedWallets(context).firstOrNull()
 
@@ -55,8 +55,9 @@ object PackageOps {
 
     fun openWallet(context: Context, kind: WalletKind?): Boolean {
         if (kind == null) return false
-        if (openPackage(context, kind.packageName)) return true
-        return openWalletByActivity(context, kind.packageName)
+        val onePlus = WalletKind.ONEPLUS.packageName
+        if (openPackage(context, onePlus)) return true
+        return openWalletByActivity(context, onePlus)
     }
 
     /** 卡包没有 launcher intent（系统应用）时，枚举 Activity 逐个尝试。 */
@@ -69,8 +70,8 @@ object PackageOps {
         }
         // 卡包没有 launcher：先试「双击快捷页」（卡面视图，最直观），再试 MainActivity。
         val explicit = listOf(
-            "$packageName.ui.quick.DoubleClickActivity",
-            "$packageName.ui.MainActivity",
+            "com.finshell.wallet.ui.quick.DoubleClickActivity",
+            "com.finshell.wallet.ui.MainActivity",
         ).filter { activities.contains(it) }
         val preferred = explicit + activities.filter { name ->
             listOf("main", "home", "wallet", "cardlist").any { name.contains(it, ignoreCase = true) }
@@ -112,8 +113,27 @@ object PackageOps {
 
     // ---------- 桌面图标 ----------
 
-    private fun launcherAlias(context: Context): ComponentName =
-        ComponentName(context.packageName, context.packageName + LAUNCHER_ALIAS_SUFFIX)
+    private fun launcherAlias(context: Context): ComponentName {
+        // applicationId 与 AndroidManifest 的 namespace 可能不同（本项目就是），
+        // 不能只用 packageName 拼组件名；优先从已声明的 activity-alias 里找。
+        val pm = context.packageManager
+        return try {
+            @Suppress("DEPRECATION")
+            val flags = PackageManager.GET_ACTIVITIES or PackageManager.MATCH_DISABLED_COMPONENTS
+            val info = pm.getPackageInfo(context.packageName, flags)
+            val alias = info.activities?.firstOrNull { activity ->
+                activity.name.endsWith(LAUNCHER_ALIAS_SUFFIX) &&
+                    activity.targetActivity?.endsWith(".MainActivity") == true
+            }
+            if (alias != null) {
+                ComponentName(context.packageName, alias.name)
+            } else {
+                ComponentName(context.packageName, context.packageName + LAUNCHER_ALIAS_SUFFIX)
+            }
+        } catch (_: Throwable) {
+            ComponentName(context.packageName, context.packageName + LAUNCHER_ALIAS_SUFFIX)
+        }
+    }
 
     /** 显示 / 隐藏桌面图标（只影响 activity-alias，不影响 LSPosed 的模块设置入口）。 */
     fun setLauncherVisible(context: Context, visible: Boolean): Boolean = try {

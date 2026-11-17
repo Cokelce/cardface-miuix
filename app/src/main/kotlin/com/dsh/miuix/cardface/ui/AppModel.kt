@@ -27,11 +27,13 @@ enum class Page(val route: String, val title: String) {
     Settings("settings", "设置"),
     Editor("editor", "自定义卡面"),
     Crop("crop", "裁剪卡面"),
-    Online("online", "在线卡面"),
     Guide("guide", "使用说明"),
     Faq("faq", "常见问题"),
     About("about", "关于与捐赠"),
+    Version("version", "版本与更新"),
+    Changelog("changelog", "更新公告"),
     Blacklist("blacklist", "卡面黑名单"),
+    Catalog("catalog", "卡面库"),
     DevHook("hook", "自定义 hook 点"),
     DevConsole("console", "诊断终端"),
     ;
@@ -86,11 +88,6 @@ class NavState(initial: List<Route> = listOf(Route(Page.Home))) {
         routes = listOf(Route(page))
     }
 
-    fun openExternalEditor(url: String) {
-        direction = NavDirection.Tab
-        routes = listOf(Route(Page.Editor, url))
-    }
-
     internal fun restore(list: List<Route>) {
         routes = if (list.isEmpty()) listOf(Route(Page.Home)) else list
     }
@@ -110,9 +107,6 @@ enum class CropTarget { Editor, Gallery }
 
 /** 编辑页的草稿状态：跨页面（相册 → 裁剪 → 回到编辑）保留，所以放在 App 级。 */
 class EditorDraft(val url: String) {
-    var restoringBitmap by mutableStateOf(false)
-    var restoreFailed by mutableStateOf(false)
-
 
     /** 相册/裁剪流程得到的本地图；保存时交给 CardImaging 合成 960×606。 */
     var localUri by mutableStateOf<Uri?>(null)
@@ -147,8 +141,6 @@ class AppModel(context: Context) {
     val prefs = AppPrefs(this.context)
     val store = ImageStore(this.context)
     val snackbar = SnackbarHostState()
-    var draftBitmapPath: String? = null
-    var persistedDraftBitmap: android.graphics.Bitmap? = null
 
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -170,6 +162,20 @@ class AppModel(context: Context) {
         storeRevision++
     }
 
+    /** 图库大图预览是否打开：用于隐藏底栏、拦截返回。 */
+    var galleryPreviewVisible by mutableStateOf(false)
+
+    /** 海报分享页是否打开：用于隐藏底栏。 */
+    var posterPreviewVisible by mutableStateOf(false)
+
+    /** 卡面库选图后是否回到编辑页（false 表示存进图库）。 */
+    var catalogForEditor by mutableStateOf(false)
+        private set
+
+    fun openCatalog(target: CropTarget) {
+        catalogForEditor = target == CropTarget.Editor
+    }
+
     /** 当前裁剪任务来自哪里。 */
     var cropTarget by mutableStateOf(CropTarget.Editor)
 
@@ -183,22 +189,13 @@ class AppModel(context: Context) {
     var cropBatchTotal by mutableStateOf(0)
     var cropBatchIndex by mutableStateOf(0)
 
-    fun savedCropQueue(): List<String> = cropQueue.take(100).map(Uri::toString)
-
-    fun restoreCropQueue(values: List<String>, total: Int, index: Int) {
-        cropQueue.clear()
-        cropQueue.addAll(DraftValidation.boundedQueue(values).map(Uri::parse))
-        cropBatchTotal = if (cropQueue.isEmpty()) 0 else total.coerceIn(cropQueue.size, 100)
-        cropBatchIndex = if (cropQueue.isEmpty()) 0 else index.coerceIn(1, cropBatchTotal)
-    }
-
     fun startCropBatch(target: CropTarget, uris: List<Uri>) {
         cropTarget = target
         cropQueue.clear()
-        cropQueue.addAll(uris.asSequence().filter { DraftValidation.validQueueUri(it.toString()) }.take(DraftValidation.MAX_CROP_QUEUE))
-        cropBatchTotal = cropQueue.size
-        cropBatchIndex = if (cropQueue.isEmpty()) 0 else 1
-        cropUri = cropQueue.firstOrNull()
+        cropQueue.addAll(uris)
+        cropBatchTotal = uris.size
+        cropBatchIndex = if (uris.isEmpty()) 0 else 1
+        cropUri = uris.firstOrNull()
     }
 
     /** 处理完当前张后切到下一张；没有下一张返回 false。 */
@@ -216,17 +213,7 @@ class AppModel(context: Context) {
     }
 
     fun openEditor(url: String) {
-        if (editor.url != url) {
-            draftBitmapPath = null
-            persistedDraftBitmap = null
-            editor = EditorDraft(url)
-        }
-    }
-
-    fun dispose() { uiScope.coroutineContext[kotlinx.coroutines.Job]?.cancel() }
-
-    fun openExternalEditor(url: String) {
-        openEditor(url)
+        if (editor.url != url) editor = EditorDraft(url)
     }
 
     fun startCrop(target: CropTarget) {

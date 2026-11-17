@@ -1,65 +1,44 @@
 package com.dsh.miuix.cardface
 
 import android.os.Bundle
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.runtime.mutableStateOf
-import com.dsh.miuix.cardface.ui.AppModel
-import com.dsh.miuix.cardface.ui.EditorDraftState
 
 class MainActivity : ComponentActivity() {
-    data class ExternalEditorRequest(val url: String, val revision: Long)
-
-    var externalEditorRequest by mutableStateOf<ExternalEditorRequest?>(null)
-        private set
-    var activeModel: AppModel? = null
-    var restoredDraftState: Bundle? = null
-        private set
-    fun takeRestoredDraft(): Bundle? = restoredDraftState.also { restoredDraftState = null }
-    fun consumeExternalRequest(revision: Long) {
-        if (externalEditorRequest?.revision == revision) {
-            intent?.removeExtra("cardface_route")
-            intent?.removeExtra("cardface_url")
-            externalEditorRequest = null
-        }
-    }
-
-    private var lastRequestUrl: String? = null
-    private var requestRevision = 0L
-
-    private fun consumeEditorIntent(intent: android.content.Intent?, allowSameUrl: Boolean) {
-        if (intent?.getStringExtra("cardface_route") != "editor") return
-        val rawUrl = intent.getStringExtra("cardface_url") ?: return
-        val uri = runCatching { android.net.Uri.parse(rawUrl) }.getOrNull() ?: return
-        if (uri.scheme?.lowercase() !in setOf("http", "https") || uri.host.isNullOrBlank()) return
-        if (!allowSameUrl && rawUrl == lastRequestUrl) return
-        lastRequestUrl = rawUrl
-        externalEditorRequest = ExternalEditorRequest(rawUrl, ++requestRevision)
-    }
-
-    override fun onNewIntent(intent: android.content.Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        consumeEditorIntent(intent, allowSameUrl = true)
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        restoredDraftState = savedInstanceState
-        lastRequestUrl = savedInstanceState?.getString(KEY_LAST_REQUEST_URL)
-        requestRevision = savedInstanceState?.getLong(KEY_REQUEST_REVISION) ?: 0L
-        if (savedInstanceState != null) {
-            externalEditorRequest = savedInstanceState.getString(KEY_PENDING_URL)?.let { url ->
-                val revision = savedInstanceState.getLong(KEY_PENDING_REVISION)
-                if (revision > 0L) ExternalEditorRequest(url, revision) else null
-            }
-        } else {
-            consumeEditorIntent(intent, allowSameUrl = true)
-        }
         enableEdgeToEdge()
+        // 卡面库缩略图并发：Coil 默认并发较低，滚动时后面的图排队很慢。
+        // OkHttpNetworkFetcher.factory 不是公开 Kotlin API，这里用反射拿到工厂，失败则保持默认加载器。
+        try {
+            val client = okhttp3.OkHttpClient.Builder()
+                .dispatcher(
+                    okhttp3.Dispatcher().apply {
+                        maxRequests = 24
+                        maxRequestsPerHost = 12
+                    },
+                )
+                .build()
+            val fetcherClass = Class.forName("coil3.network.okhttp.OkHttpNetworkFetcher")
+            val factoryMethod = fetcherClass.getMethod("factory", okhttp3.Call.Factory::class.java)
+            val factory = factoryMethod.invoke(null, client) as coil3.network.NetworkFetcher.Factory
+            val loader = coil3.ImageLoader.Builder(this)
+                .components { add(factory) }
+                .build()
+            coil3.SingletonImageLoader.setUnsafe(loader)
+        } catch (_: Throwable) {
+        }
+        // 固定行为：过滤小图、拦截超级岛、始终显示卡面库、保存到图库前先命名。
+        runCatching {
+            val p = com.dsh.miuix.cardface.core.AppPrefs(this)
+            p.showAllCards = false
+            p.superIsland = true
+            p.catalogEnabled = true
+            p.askNameOnGallerySave = true
+        }
+        // 一次性屏蔽银行卡广告示意图，避免混进选图界面。
+        runCatching { com.dsh.miuix.cardface.core.AppPrefs(this).hidePromoBankFacesOnce() }
         // 初始化 LSPosed RemotePreferences 通道，并把本地映射迁移过去（异步、失败不影响使用）。
         try {
             com.dsh.miuix.cardface.core.RemotePrefsBridge.init()
@@ -70,6 +49,7 @@ class MainActivity : ComponentActivity() {
         try {
             val prefs = com.dsh.miuix.cardface.core.AppPrefs(this)
             com.dsh.miuix.cardface.core.PackageOps.ensureLauncherMatchesPrefs(this, prefs.hideIcon)
+            cleanupTestAssets(prefs)
             if (prefs.hideIcon) {
                 com.dsh.miuix.cardface.core.PackageOps.postHiddenEntryNotification(this)
             }
@@ -78,20 +58,18 @@ class MainActivity : ComponentActivity() {
         setContent { CardFaceApp() }
     }
 
-    override fun onSaveInstanceState(outState: Bundle) {
-        val request = externalEditorRequest
-        outState.putString(KEY_LAST_REQUEST_URL, lastRequestUrl)
-        outState.putLong(KEY_REQUEST_REVISION, requestRevision)
-        outState.putString(KEY_PENDING_URL, request?.url)
-        outState.putLong(KEY_PENDING_REVISION, request?.revision ?: 0L)
-        activeModel?.let { EditorDraftState.saveScalars(outState, it) }
-        super.onSaveInstanceState(outState)
-    }
-
-    companion object {
-        private const val KEY_LAST_REQUEST_URL = "cardface.last_editor_url"
-        private const val KEY_REQUEST_REVISION = "cardface.editor_revision"
-        private const val KEY_PENDING_URL = "cardface.pending_editor_url"
-        private const val KEY_PENDING_REVISION = "cardface.pending_editor_revision"
+    /** 一次性清掉历史版本自动生成的测试图 / 演示图，正式包图库保持干净。 */
+    private fun cleanupTestAssets(prefs: com.dsh.miuix.cardface.core.AppPrefs) {
+        val marker = getSharedPreferences("maintenance", MODE_PRIVATE)
+        if (marker.getBoolean("test_assets_cleaned_v1", false)) return
+        runCatching {
+            val store = com.dsh.miuix.cardface.core.ImageStore(this)
+            store.dir.listFiles { f ->
+                f.isFile && (f.name == "cardface-test.png" || f.name.startsWith("demo-card-"))
+            }?.forEach { it.delete() }
+            val demoUrls = prefs.allCardUrls().filter { it.startsWith("https://demo.cardface.local/") }
+            prefs.removeCardUrls(demoUrls)
+            marker.edit().putBoolean("test_assets_cleaned_v1", true).apply()
+        }
     }
 }

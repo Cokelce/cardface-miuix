@@ -14,6 +14,19 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.AnimatedContent
+import android.graphics.Bitmap
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -37,6 +50,8 @@ import com.dsh.miuix.cardface.ui.AppModel
 import com.dsh.miuix.cardface.ui.AboutScreen
 import com.dsh.miuix.cardface.ui.BlacklistScreen
 import com.dsh.miuix.cardface.ui.CardImaging
+import com.dsh.miuix.cardface.ui.ChangelogScreen
+import com.dsh.miuix.cardface.ui.CatalogScreen
 import com.dsh.miuix.cardface.ui.CropScreen
 import com.dsh.miuix.cardface.ui.CropTarget
 import com.dsh.miuix.cardface.ui.DevConsoleScreen
@@ -53,11 +68,13 @@ import com.dsh.miuix.cardface.ui.NavState
 import com.dsh.miuix.cardface.ui.Page
 import com.dsh.miuix.cardface.ui.Route
 import com.dsh.miuix.cardface.ui.SettingsScreen
+import com.dsh.miuix.cardface.ui.VersionScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
@@ -78,73 +95,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun CardFaceApp() {
     val context = LocalContext.current
-    val activity = context as? MainActivity
-    val request = activity?.externalEditorRequest
-    val requestRevision = request?.revision ?: 0L
-    val externalUrl = request?.url
-    val restoration = remember { activity?.takeRestoredDraft() }
-    val model = remember {
-        AppModel(context).apply {
-            if (restoration != null && (request == null || requestRevision == restoration.getLong("cardface.pending_editor_revision"))) {
-                com.dsh.miuix.cardface.ui.EditorDraftState.restoreScalars(restoration, this)
-            } else externalUrl?.let { openEditor(it) }
-        }
-    }
-    androidx.compose.runtime.DisposableEffect(model, activity) {
-        activity?.activeModel = model
-        onDispose { if (activity?.activeModel === model) activity.activeModel = null }
-    }
-    LaunchedEffect(model) {
-        if (restoration != null && model.editor.localBitmap == null) {
-            val savedUrl = restoration.getString("cardface.draft.url")
-            if (savedUrl == model.editor.url) {
-                val path = model.draftBitmapPath
-                val draft = model.editor
-                try {
-                    val bitmap = com.dsh.miuix.cardface.ui.EditorDraftState.restoreBitmap(path)
-                    if (model.editor === draft && draft.localBitmap == null) {
-                        draft.localBitmap = bitmap
-                        draft.restoreFailed = bitmap == null && path != null
-                        model.persistedDraftBitmap = bitmap
-                        if (draft.restoreFailed) model.notify("草稿图片读取失败，请重新选择图片；裁剪与标志设置已保留")
-                    }
-                } finally {
-                    draft.restoringBitmap = false
-                }
-            }
-        }
-    }
-    LaunchedEffect(model, model.editor.localBitmap, model.editor.url) {
-        // Do not overwrite the saved bitmap while asynchronous restoration is still pending.
-        if (model.editor.localBitmap != null) {
-            val draft = model.editor
-            val bitmap = draft.localBitmap
-            val previousPath = model.draftBitmapPath
-            val path = com.dsh.miuix.cardface.ui.EditorDraftState.saveBitmap(context.cacheDir, bitmap, draft.url, previousPath)
-            if (model.editor === draft && draft.localBitmap === bitmap && path != null) {
-                model.draftBitmapPath = path
-                model.persistedDraftBitmap = bitmap
-            }
-        }
-    }
-    androidx.compose.runtime.DisposableEffect(model) {
-        val resolver = context.contentResolver
-        val observer = object : android.database.ContentObserver(android.os.Handler(android.os.Looper.getMainLooper())) {
-            override fun onChange(selfChange: Boolean, uri: android.net.Uri?) {
-                model.prefs.bumpRevision()
-            }
-        }
-        val root = "content://${com.dsh.miuix.cardface.core.HookPrefsProtocol.AUTHORITY}"
-        resolver.registerContentObserver(android.net.Uri.parse("$root/detected_names"), true, observer)
-        resolver.registerContentObserver(android.net.Uri.parse("$root/card_urls"), true, observer)
-        resolver.registerContentObserver(android.net.Uri.parse("$root/apply_state"), true, observer)
-        resolver.registerContentObserver(android.net.Uri.parse("$root/runtime_health"), true, observer)
-        resolver.registerContentObserver(android.net.Uri.parse("$root/card_sources"), true, observer)
-        resolver.registerContentObserver(android.net.Uri.parse("$root/replacement_assets"), true, observer)
-        resolver.registerContentObserver(android.net.Uri.parse("$root/owned_cards"), true, observer)
-        onDispose { resolver.unregisterContentObserver(observer); model.dispose() }
-    }
-
+    val model = remember { AppModel(context) }
 
     // 只有外观设置变化时才重建主题控制器。
     // 不能用 prefs.revision：hook 上报卡面 / last_hook_at 也会自增，那会在使用过程中反复换主题导致卡顿。
@@ -174,41 +125,26 @@ fun CardFaceApp() {
         androidx.compose.runtime.CompositionLocalProvider(
             LocalAnimationsEnabled provides appearance.animations,
         ) {
-            CardFaceRoot(model, appearance.animations, externalUrl, requestRevision, activity)
+            CardFaceRoot(model, appearance.animations)
         }
     }
 }
 
 @Composable
-private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean, externalUrl: String?, requestRevision: Long, activity: MainActivity?) {
+private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val nav = rememberSaveable(saver = NavState.Saver) {
-        NavState(if (externalUrl != null) listOf(Route(Page.Editor, externalUrl)) else listOf(Route(Page.Home)))
-    }
-    val handledRequest = rememberSaveable { androidx.compose.runtime.mutableLongStateOf(requestRevision) }
-    LaunchedEffect(requestRevision, externalUrl) {
-        if (externalUrl != null) {
-            if (requestRevision != handledRequest.longValue || model.editor.url != externalUrl ||
-                (nav.current != Route(Page.Editor, externalUrl) && nav.current.page != Page.Crop)) {
-                model.openEditor(externalUrl)
-                nav.openExternalEditor(externalUrl)
-                handledRequest.longValue = requestRevision
-            }
-            activity?.consumeExternalRequest(requestRevision)
-        }
-    }
+    val nav = rememberSaveable(saver = NavState.Saver) { NavState() }
+    var pendingGallerySave by remember { mutableStateOf<Bitmap?>(null) }
+    var pendingGalleryName by remember { mutableStateOf("") }
     val route = nav.current
-    remember(model, route.page, route.arg) {
-        if (route.page == Page.Editor) route.arg?.let { model.openEditor(it) }
-        true
-    }
     val currentPage = route.page
+
     BackHandler(enabled = nav.canGoBack) { nav.pop() }
 
     // 首次启动：直接进引导页（首页作为返回栈底，返回键不会退出应用）。
     LaunchedEffect(Unit) {
-        if (externalUrl == null && model.prefs.firstRun && nav.current.page == Page.Home && nav.routes.size == 1) {
+        if (model.prefs.firstRun && nav.routes.size == 1) {
             nav.push(Route(Page.Guide))
         }
     }
@@ -245,7 +181,7 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean, externalUr
             }
         },
         bottomBar = {
-            if (currentPage.isTab) {
+            if (currentPage.isTab && !model.galleryPreviewVisible && !model.posterPreviewVisible) {
                 FloatingNavigationBar() {
                     FloatingTabItem(
                         selected = currentPage == Page.Home,
@@ -317,7 +253,7 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean, externalUr
                     }
                 }
             },
-            contentKey = { if (it.page == Page.Editor) it.encode() else it.page.name },
+            contentKey = { it.page },
             label = "routeTransition",
         ) { targetRoute ->
             val page = targetRoute.page
@@ -328,8 +264,7 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean, externalUr
                     innerPadding = innerPadding,
                     onOpenEditor = { url ->
                         model.openEditor(url)
-                        if (nav.current.page == Page.Editor) nav.openExternalEditor(url)
-                        else nav.push(Route(Page.Editor, url))
+                        nav.push(Route(Page.Editor, url))
                     },
                     onOpenGuide = { nav.push(Route(Page.Guide)) },
                 )
@@ -341,6 +276,10 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean, externalUr
                         model.startCropBatch(CropTarget.Gallery, uris)
                         if (uris.isNotEmpty()) nav.push(Route(Page.Crop))
                     },
+                    onOpenCatalog = {
+                        model.openCatalog(CropTarget.Gallery)
+                        nav.push(Route(Page.Catalog))
+                    },
                 )
 
                 Page.Settings -> SettingsScreen(
@@ -350,28 +289,37 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean, externalUr
                     onOpenGuide = { nav.push(Route(Page.Guide)) },
                     onOpenFaq = { nav.push(Route(Page.Faq)) },
                     onOpenAbout = { nav.push(Route(Page.About)) },
-                    onOpenDevHook = { nav.push(Route(Page.DevHook)) },
-                    onOpenDevConsole = { nav.push(Route(Page.DevConsole)) },
-                )
-
-                Page.Online -> com.dsh.miuix.cardface.ui.OnlineGalleryScreen(
-                    model = model, innerPadding = innerPadding, onBack = { nav.pop() },
-                    onUse = { uri ->
-                        nav.pop()
-                        model.startCrop(CropTarget.Editor)
-                        model.cropUri = uri
-                        nav.push(Route(Page.Crop))
-                    },
+                    onOpenVersion = { nav.push(Route(Page.Version)) },
                 )
 
                 Page.Editor -> EditorScreen(
                     model = model,
-                    onOpenOnline = { nav.push(Route(Page.Online)) },
                     innerPadding = innerPadding,
-                    onBack = { if (!nav.pop()) (context as? android.app.Activity)?.finish() },
+                    onBack = { nav.pop() },
                     onStartCrop = { uri ->
                         model.startCrop(CropTarget.Editor)
                         model.cropUri = uri
+                        nav.push(Route(Page.Crop))
+                    },
+                    onOpenCatalog = {
+                        model.openCatalog(CropTarget.Editor)
+                        nav.push(Route(Page.Catalog))
+                    },
+                )
+
+                Page.Catalog -> CatalogScreen(
+                    model = model,
+                    innerPadding = innerPadding,
+                    onBack = { nav.pop() },
+                    onUse = { uri ->
+                        val forEditor = model.catalogForEditor
+                        nav.pop()
+                        if (forEditor) {
+                            model.startCrop(CropTarget.Editor)
+                            model.cropUri = uri
+                        } else {
+                            model.startCropBatch(CropTarget.Gallery, listOf(uri))
+                        }
                         nav.push(Route(Page.Crop))
                     },
                 )
@@ -399,6 +347,11 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean, externalUr
                                 var name = ""
                                 if (card == null) {
                                     model.notify("保存失败：图片合成出错")
+                                } else if (model.prefs.askNameOnGallerySave && batchTotal <= 1) {
+                                    // 开关打开：先弹命名框，等用户确认后再保存
+                                    pendingGallerySave = card
+                                    pendingGalleryName = model.store.defaultName().removeSuffix(".png")
+                                    return@launch
                                 } else {
                                     name = model.store.uniqueName(model.store.defaultName())
                                     saved = withContext(Dispatchers.IO) {
@@ -423,6 +376,18 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean, externalUr
                     },
                 )
 
+                Page.Version -> VersionScreen(
+                    model = model,
+                    innerPadding = innerPadding,
+                    onBack = { nav.pop() },
+                    onOpenChangelog = { nav.push(Route(Page.Changelog)) },
+                )
+
+                Page.Changelog -> ChangelogScreen(
+                    innerPadding = innerPadding,
+                    onBack = { nav.pop() },
+                )
+
                 Page.Guide -> GuideScreen(
                     model = model,
                     innerPadding = innerPadding,
@@ -441,6 +406,7 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean, externalUr
                     onBack = { nav.pop() },
                     onOpenGuide = { nav.push(Route(Page.Guide)) },
                     onOpenFaq = { nav.push(Route(Page.Faq)) },
+                    onOpenChangelog = { nav.push(Route(Page.Changelog)) },
                 )
 
                 Page.Blacklist -> BlacklistScreen(
@@ -463,6 +429,59 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean, externalUr
             }
             }
         }
+
+    val saveBitmap = pendingGallerySave
+    if (saveBitmap != null) {
+        OverlayDialog(
+            show = true,
+            title = "命名图片",
+            summary = "保存到图库前给这张图起个名字",
+            onDismissRequest = {
+                pendingGallerySave = null
+                saveBitmap.recycle()
+                nav.pop()
+            },
+        ) {
+            TextField(
+                value = pendingGalleryName,
+                onValueChange = { pendingGalleryName = it.take(60) },
+                label = "图片名称",
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(
+                    text = "取消",
+                    onClick = {
+                        pendingGallerySave = null
+                        saveBitmap.recycle()
+                        nav.pop()
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                TextButton(
+                    text = "保存",
+                    onClick = {
+                        scope.launch {
+                            val newName = runCatching {
+                                model.store.uniqueName(pendingGalleryName.ifBlank { model.store.defaultName() })
+                            }.getOrDefault(model.store.defaultName())
+                            val ok = withContext(Dispatchers.IO) {
+                                runCatching { model.store.save(saveBitmap, newName) }.isSuccess
+                            }
+                            saveBitmap.recycle()
+                            pendingGallerySave = null
+                            model.bumpStore()
+                            model.notify(if (ok) "已保存到图库：$newName" else "保存失败")
+                            nav.pop()
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
     }
 }
 

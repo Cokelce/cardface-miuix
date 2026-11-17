@@ -16,9 +16,8 @@ android {
         applicationId = "io.github.miambao.cardface.oneplus"
         minSdk = 26
         targetSdk = 36
-        versionCode = 45
-        versionName = "1.0.8-oneplus.11"
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        versionCode = 51
+        versionName = "2.0.0-oneplus.5"
     }
 
     // 签名信息从本地的 keystore.properties 读取（该文件与 keystore/ 都不入库）。
@@ -53,7 +52,9 @@ android {
     }
     buildFeatures { compose = true }
     lint { abortOnError = false; checkReleaseBuilds = false }
-    packaging { resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" } }
+    packaging {
+        resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+    }
 }
 
 kotlin { compilerOptions { jvmTarget.set(JvmTarget.JVM_17) } }
@@ -74,6 +75,4 @@ dependencies {
     implementation("io.github.libxposed:service:101.0.0")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.json:json:20240303")
-    androidTestImplementation("androidx.test.ext:junit:1.3.0")
-    androidTestImplementation("androidx.test:runner:1.7.0")
 }

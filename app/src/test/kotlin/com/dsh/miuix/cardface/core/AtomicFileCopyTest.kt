@@ -19,7 +19,7 @@ class AtomicFileCopyTest {
     } finally {root.deleteRecursively()} }
     @Test fun truncatedExistingIsRepaired() { val root=Files.createTempDirectory("atomic").toFile();try {
         val src=File(root,"source").apply {writeText("complete content")};val dir=File(root,"dest").apply {mkdir()};File(dir,"card.png").writeText("part")
-        assertEquals(0,run(src,dir));assertEquals(BackupArchive.sha(src),BackupArchive.sha(File(dir,"card.png")))
+        assertEquals(0,run(src,dir));assertArrayEquals(src.readBytes(),File(dir,"card.png").readBytes())
     } finally {root.deleteRecursively()} }
     @Test fun failedSourcePreservesOldTarget() { val root=Files.createTempDirectory("atomic").toFile();try {
         val src=File(root,"missing");val dir=File(root,"dest").apply {mkdir()};val old=File(dir,"card.png").apply {writeText("previous usable image")}

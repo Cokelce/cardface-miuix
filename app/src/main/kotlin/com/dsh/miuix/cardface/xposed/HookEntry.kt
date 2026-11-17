@@ -9,9 +9,7 @@ import io.github.libxposed.api.XposedModuleInterface
  * 由 APK 根目录 `META-INF/xposed/java_init.list` 指定：
  *   `com.dsh.miuix.cardface.xposed.HookEntry`
  *
- * 支持的钱包进程：
- *  - com.miui.tsmclient -> ostype 0
- *  - com.finshell.wallet -> ostype 1
+ * 仅支持 com.finshell.wallet（一加钱包）
  * 其它包直接返回。
  */
 class HookEntry : XposedModule() {
@@ -21,11 +19,8 @@ class HookEntry : XposedModule() {
     private var earlyEngine: HookEngine? = null
 
     override fun onPackageLoaded(param: XposedModuleInterface.PackageLoadedParam) {
-        val osType = when (param.packageName) {
-            MethodLocator.MIUI_PACKAGE -> MethodLocator.OS_MIUI
-            MethodLocator.ONEPLUS_PACKAGE -> MethodLocator.OS_ONEPLUS
-            else -> return
-        }
+        if (param.packageName != MethodLocator.ONEPLUS_PACKAGE) return
+        val osType = MethodLocator.OS_ONEPLUS
         XLog.attach(this)
         try {
             val engine = HookEngine(this, osType, param.defaultClassLoader, param.applicationInfo)
@@ -52,14 +47,11 @@ class HookEntry : XposedModule() {
             return
         }
         val packageName = param.packageName
-        val osType = when (packageName) {
-            MethodLocator.MIUI_PACKAGE -> MethodLocator.OS_MIUI
-            MethodLocator.ONEPLUS_PACKAGE -> MethodLocator.OS_ONEPLUS
-            else -> {
-                XLog.d("skip unsupported package: $packageName")
-                return
-            }
+        if (packageName != MethodLocator.ONEPLUS_PACKAGE) {
+            XLog.d("skip unsupported package: $packageName")
+            return
         }
+        val osType = MethodLocator.OS_ONEPLUS
         XLog.attach(this)
         XLog.i("package ready: $packageName (osType=$osType, firstPackage=${param.isFirstPackage})")
         try {

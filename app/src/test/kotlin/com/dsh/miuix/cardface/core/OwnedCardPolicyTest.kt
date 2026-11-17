@@ -24,7 +24,7 @@ class OwnedCardPolicyTest {
         assertFalse(OwnedCardPolicy.accept(card(aid = " ", unique = " ")))
         assertFalse(OwnedCardPolicy.accept(card(url = null)))
         assertTrue(OwnedCardPolicy.accept(card(aid = "aid")))
-        assertFalse(OwnedCardPolicy.accept(card(aid = null, unique = "unique")))
+        assertTrue(OwnedCardPolicy.accept(card(aid = null, unique = "unique")))
         assertTrue(OwnedCardPolicy.accept(card(status = "SUSPENDED")))
     }
 
@@ -37,4 +37,22 @@ class OwnedCardPolicyTest {
         assertEquals(emptySet<String>(), OwnedCardPolicy.snapshotUrls(null))
         assertFalse(OwnedCardPolicy.snapshotUrls(json).contains("https://legacy-polluted"))
     }
+    @Test fun provisionedCardsDoNotAllHaveNfcAid() {
+        for (type in listOf("1", "6", "14", "33")) {
+            assertTrue("ACTIVE type=$type", OwnedCardPolicy.accept(card(type=type, aid=null, unique="instance-id")))
+            assertTrue("SUSPENDED type=$type", OwnedCardPolicy.accept(card(type=type, status="SUSPENDED", aid=null, unique="instance-id")))
+        }
+    }
+
+    @Test fun templateIdentityNeverGrantsMembership() {
+        for (status in listOf("RECOMMEND", "WAIT_TO_RECEIVE", "ALLOW_OPEN", "NOT_BINDED", "DELETED", "DELETING", "UNKNOWN", "")) {
+            assertFalse(status, OwnedCardPolicy.accept(card(status=status, aid=null, unique="template-id")))
+        }
+        for (type in listOf("0", "4", "19")) {
+            assertFalse(type, OwnedCardPolicy.accept(card(type=type, aid=null, unique="template-id")))
+        }
+        assertFalse(OwnedCardPolicy.accept(card(aid=null, unique="null")))
+        assertFalse(OwnedCardPolicy.accept(card(aid="null", unique=null)))
+    }
+
 }

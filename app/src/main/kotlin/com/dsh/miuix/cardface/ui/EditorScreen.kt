@@ -19,8 +19,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -78,7 +76,7 @@ fun EditorScreen(
     innerPadding: PaddingValues,
     onBack: () -> Unit,
     onStartCrop: (Uri) -> Unit,
-    onOpenOnline: () -> Unit,
+    onOpenCatalog: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val prefs = model.prefs
@@ -89,8 +87,7 @@ fun EditorScreen(
     val animationsEnabled = LocalAnimationsEnabled.current
     val revision = prefs.revision
 
-    val replacement = remember(url, revision) { prefs.replacementFor(url) }
-    var loadedSavedBitmap by remember(url) { mutableStateOf<android.graphics.Bitmap?>(null) }
+    val replacement = remember(revision) { prefs.replacementFor(url) }
 
     var showPasteDialog by remember { mutableStateOf(false) }
     var showGallerySheet by remember { mutableStateOf(false) }
@@ -100,21 +97,17 @@ fun EditorScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // 打开编辑页时：如果这个卡面已经用了图库图片，把它载入草稿，方便继续加标志/圆角后重新保存。
-    LaunchedEffect(draft, draft.restoringBitmap) {
+    LaunchedEffect(url) {
         val current = prefs.replacementFor(url)
-        if (!draft.restoringBitmap && !draft.restoreFailed && draft.localBitmap == null && current != null && !DeviceBridge.isRemote(current)) {
-            val loaded = store.load(current)
-            if (model.editor === draft && !draft.restoringBitmap && !draft.restoreFailed && draft.localBitmap == null && prefs.replacementFor(url) == current) {
-                loadedSavedBitmap = loaded
-                draft.localBitmap = loaded
-                draft.localCrop = null
-            }
+        if (draft.localBitmap == null && current != null && !DeviceBridge.isRemote(current)) {
+            draft.localBitmap = store.load(current)
+            draft.localCrop = null
         }
     }
 
     // 裁剪结果 + 标志/圆角变化 → 重新生成预览（等同最终输出）
     var previewBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
-    LaunchedEffect(draft, draft.localBitmap, draft.localCrop, draft.logoAsset, draft.roundCorners) {
+    LaunchedEffect(draft.localBitmap, draft.localCrop, draft.logoAsset, draft.roundCorners) {
         val source = draft.localBitmap
         previewBitmap = if (source == null) {
             null
@@ -127,14 +120,9 @@ fun EditorScreen(
                     roundCorners = draft.roundCorners,
                     logoAsset = draft.logoAsset,
                 ),
-            ).also { if (model.editor !== draft) it?.recycle() }
-                .takeIf { model.editor === draft }
+            )
         }
     }
-
-    val hasPendingPreview = draft.localBitmap != null &&
-        (draft.localBitmap !== loadedSavedBitmap || draft.localCrop != null ||
-            draft.logoAsset != null || !draft.roundCorners)
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) onStartCrop(uri)
@@ -145,18 +133,8 @@ fun EditorScreen(
     }
 
     fun applyReplacement(value: String?) {
-        if (draft.saving) return
-        draft.saving = true
-        scope.launch {
-            try {
-                withContext(Dispatchers.IO) {
-                    com.dsh.miuix.cardface.core.ReplacementService.apply(context, prefs, store, url, value)
-                }
-                if (model.editor === draft) draft.clearPendingImage()
-                toast(if (value.isNullOrBlank()) "替换已清空，源图片保留；请重新打开钱包" else "映射与快照已保存，请打开钱包确认命中")
-            } catch (t: Throwable) { errorMessage = t.message ?: "保存失败，原配置保留" }
-            finally { if (model.editor === draft) draft.saving = false }
-        }
+        prefs.setReplacement(url, value)
+        draft.clearPendingImage()
     }
 
     fun doSave(name: String) {
@@ -173,25 +151,29 @@ fun EditorScreen(
                     logoAsset = draft.logoAsset,
                 ),
             )
-            if (model.editor !== draft) { bitmap?.recycle(); return@launch }
             if (bitmap == null) {
                 draft.saving = false
                 errorMessage = "图像合成失败：这张图可能已经损坏，换一张试试。"
                 return@launch
             }
-            try {
-                withContext(Dispatchers.IO) {
-                    store.saveApplied(bitmap, finalName)
-                    com.dsh.miuix.cardface.core.ReplacementService.apply(context, prefs, store, url, finalName)
+            runCatching {
+                withContext(Dispatchers.IO) { store.saveApplied(bitmap, finalName) }
+            }.onSuccess {
+                prefs.setReplacement(url, finalName)
+                runCatching {
+                    withContext(Dispatchers.IO) {
+                        com.dsh.miuix.cardface.core.CardSync.copyImage(context, store, finalName)
+                        com.dsh.miuix.cardface.core.CardSync.writeMapSnapshot(context, prefs)
+                    }
                 }
-                if (model.editor === draft) {
-                    draft.clearPendingImage()
-                    savedName = finalName
-                    showSuccess = true
-                }
-            } catch (t: Throwable) {
-                errorMessage = t.message ?: "保存失败，原配置保留"
-            } finally { if (model.editor === draft) draft.saving = false; bitmap.recycle() }
+                draft.clearPendingImage()
+                savedName = finalName
+                draft.saving = false
+                showSuccess = true
+            }.onFailure {
+                draft.saving = false
+                errorMessage = "保存失败：${it.message ?: "未知错误"}"
+            }
         }
     }
 
@@ -234,18 +216,74 @@ fun EditorScreen(
                     cornerRadius = 20.dp,
                     insideMargin = PaddingValues(10.dp),
                 ) {
-                    val localPreview = if (hasPendingPreview) previewBitmap else null
-                    val replacementModel = when {
-                        replacement.isNullOrBlank() -> null
+                    val localPreview = previewBitmap
+                    val model_ = when {
+                        localPreview != null -> null
+                        replacement.isNullOrBlank() -> url
                         DeviceBridge.isRemote(replacement) -> replacement
-                        else -> store.fileUri(replacement)
+                        else -> store.fileUri(replacement!!)
                     }
-                    CardComparisonPreview(
-                        originalUrl = url,
-                        replacementModel = replacementModel,
-                        previewBitmap = localPreview,
-                        pending = hasPendingPreview,
-                    )
+                    val previewState = EditorPreviewState(localPreview, model_)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(CardImaging.TARGET_RATIO)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(MiuixTheme.colorScheme.secondaryContainer),
+                    ) {
+                        Crossfade(
+                            targetState = previewState,
+                            animationSpec = if (animationsEnabled) tween(220) else snap(),
+                            label = "editorPreview",
+                        ) { state ->
+                            when {
+                                state.bitmap != null -> androidx.compose.foundation.Image(
+                                    bitmap = state.bitmap.asImageBitmap(),
+                                    contentDescription = "替换预览",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop,
+                                )
+
+                                !state.model.isNullOrBlank() -> AppAsyncImage(
+                                    model = state.model,
+                                    contentDescription = "当前预览",
+                                    modifier = Modifier.fillMaxSize(),
+                                    backgroundBrush = cardThumbnailGradient(),
+                                )
+
+                                else -> Icon(
+                                    imageVector = MiuixIcons.Photos,
+                                    contentDescription = null,
+                                    tint = MiuixTheme.colorScheme.onSurfaceContainerVariant,
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .size(40.dp),
+                                )
+                            }
+                        }
+                        val pill = when {
+                            localPreview != null -> "待保存"
+                            replacement.isNullOrBlank() -> "原图"
+                            DeviceBridge.isRemote(replacement) -> "网络图"
+                            else -> "已替换"
+                        }
+                        StatusPill(
+                            text = pill,
+                            containerColor = if (localPreview != null || !replacement.isNullOrBlank()) {
+                                MiuixTheme.colorScheme.primary
+                            } else {
+                                MiuixTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                            },
+                            contentColor = if (localPreview != null || !replacement.isNullOrBlank()) {
+                                MiuixTheme.colorScheme.onPrimary
+                            } else {
+                                MiuixTheme.colorScheme.surface
+                            },
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp),
+                        )
+                    }
                 }
             }
 
@@ -253,7 +291,7 @@ fun EditorScreen(
                 Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)) {
                     Text(
                         text = when {
-                            hasPendingPreview -> "当前效果：待保存（裁剪 + 标志 + 圆角已就绪）"
+                            draft.localBitmap != null -> "当前效果：待保存（裁剪 + 标志 + 圆角已就绪）"
                             replacement.isNullOrBlank() -> "当前效果：原图（还没有替换）"
                             DeviceBridge.isRemote(replacement) -> "当前效果：网络地址替换"
                             else -> "当前效果：已替换为图库图片 $replacement"
@@ -261,39 +299,47 @@ fun EditorScreen(
                         style = MiuixTheme.textStyles.body2,
                         color = MiuixTheme.colorScheme.onSurface,
                     )
-                    Text(
-                        text = prefs.applicationDetails(url),
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = url,
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onBackgroundVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
                 }
             }
 
             item(key = "actions") {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ActionTile(icon = MiuixIcons.Album, label = "从相册选", subtitle = "选择手机里的图片",
-                            onClick = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                            modifier = Modifier.weight(1f))
-                        ActionTile(icon = MiuixIcons.Link, label = "粘贴网址", subtitle = "使用图片直链",
-                            onClick = { showPasteDialog = true }, modifier = Modifier.weight(1f))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ActionTile(
+                            icon = MiuixIcons.Album,
+                            label = "从相册选",
+                            onClick = {
+                                picker.launch(
+                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        ActionTile(
+                            icon = MiuixIcons.Link,
+                            label = "粘贴网址",
+                            onClick = { showPasteDialog = true },
+                            modifier = Modifier.weight(1f),
+                        )
                     }
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        ActionTile(icon = MiuixIcons.Photos, label = "从图库选", subtitle = "复用已保存的卡面",
-                            onClick = { showGallerySheet = true }, modifier = Modifier.weight(1f))
-                        ActionTile(icon = MiuixIcons.Photos, label = "在线卡面", subtitle = "银行 · 交通 · IP 联动",
-                            onClick = onOpenOnline, modifier = Modifier.weight(1f))
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        ActionTile(
+                            icon = MiuixIcons.Photos,
+                            label = "从图库选",
+                            onClick = { showGallerySheet = true },
+                            modifier = Modifier.weight(1f),
+                        )
+                        ActionTile(
+                            icon = MiuixIcons.Album,
+                            label = "在线卡面",
+                            onClick = onOpenCatalog,
+                            modifier = Modifier.weight(1f),
+                        )
                     }
                 }
             }
@@ -357,12 +403,6 @@ fun EditorScreen(
                             )
                         }
                     }
-                    Text(
-                        text = "输出 960×606 PNG · Lanczos3 高质量缩放",
-                        style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onBackgroundVariant,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                    )
                 }
             }
         }
@@ -421,7 +461,7 @@ fun EditorScreen(
                         } else {
                             applyReplacement(value)
                             showPasteDialog = false
-
+                            toast("已应用网络图片，重启卡包后生效")
                         }
                     },
                     modifier = Modifier.weight(1f),
@@ -485,8 +525,8 @@ fun EditorScreen(
     if (showSuccess) {
         OverlayDialog(
             show = true,
-            title = "已保存，等待钱包加载",
-            summary = "替换图「$savedName」、钱包副本与映射快照已核验。重新打开钱包后查看命中回报。",
+            title = "已应用到卡包",
+            summary = "替换图「$savedName」已保存，重启卡包后生效。",
             onDismissRequest = { showSuccess = false },
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -517,13 +557,14 @@ fun EditorScreen(
     ConfirmDialog(
         show = showClearConfirm,
         title = "清空这张卡面的替换？",
-        message = "恢复这张卡的原图，并从识别列表移除旧替换素材；不会删除其他卡共用的图片。",
+        message = "会把这张卡面恢复成卡包里的原图（图库里的图片仍然保留）。",
         confirmText = "清空",
         destructive = true,
         onConfirm = {
             showClearConfirm = false
-            // Clearing a mapping must never delete shared source images.
+            replacement?.takeIf { !DeviceBridge.isRemote(it) }?.let { store.delete(it) }
             applyReplacement(null)
+            toast("已清空替换，重启卡包后生效")
         },
         onDismiss = { showClearConfirm = false },
     )
@@ -544,46 +585,32 @@ fun EditorScreen(
 private fun ActionTile(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = modifier,
-        cornerRadius = 18.dp,
-        insideMargin = PaddingValues(horizontal = 12.dp, vertical = 16.dp),
+        cornerRadius = 16.dp,
+        insideMargin = PaddingValues(vertical = 14.dp),
         colors = CardDefaults.defaultColors(),
         onClick = onClick,
     ) {
-        BoxWithConstraints(Modifier.fillMaxWidth()) {
-            val compact = maxWidth < 150.dp
-            if (compact) {
-                Column(Modifier.fillMaxWidth().heightIn(min = 78.dp), horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center) {
-                    Icon(imageVector = icon, contentDescription = null, tint = MiuixTheme.colorScheme.primary, modifier = Modifier.size(24.dp))
-                    Spacer(Modifier.height(8.dp))
-                    Text(label, style = MiuixTheme.textStyles.body2, fontWeight = FontWeight.Medium,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Spacer(Modifier.height(3.dp))
-                    Text(subtitle, style = MiuixTheme.textStyles.footnote2,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-            } else Row(Modifier.fillMaxWidth().heightIn(min = 78.dp), verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(Modifier.size(38.dp).clip(RoundedCornerShape(12.dp))
-                .background(MiuixTheme.colorScheme.primaryContainer), contentAlignment = Alignment.Center) {
-                Icon(imageVector = icon, contentDescription = null,
-                    tint = MiuixTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
-            }
-            Column(Modifier.weight(1f)) {
-                Text(label, style = MiuixTheme.textStyles.body2, fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Spacer(Modifier.height(3.dp))
-                Text(subtitle, style = MiuixTheme.textStyles.footnote2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = MiuixTheme.colorScheme.primary,
+            modifier = Modifier
+                .align(Alignment.CenterHorizontally)
+                .size(24.dp),
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = label,
+            style = MiuixTheme.textStyles.footnote1,
+            color = MiuixTheme.colorScheme.onSurface,
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            maxLines = 1,
+        )
     }
 }
 

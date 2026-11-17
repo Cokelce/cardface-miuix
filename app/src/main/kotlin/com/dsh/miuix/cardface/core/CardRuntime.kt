@@ -21,8 +21,18 @@ object CardRuntime {
 object CardIdentity {
     private val sizeSegment = Regex("/w\\d+h\\d+(?=/|$)")
     private val walletTransform = Regex("(?i)(\\.(?:png|jpe?g))(?:\\.-[a-z0-9]+)*\\.webp$")
-    fun key(url: String): String = walletTransform.replace(
-        sizeSegment.replace(url.substringBefore('?').substringBefore('#'), ""), "$1")
+    private val volatileQuery = setOf("w", "h", "width", "height", "size", "q", "quality", "format", "fmt",
+        "thumbnail", "thumb", "resize", "scale", "x-oss-process", "imageview2", "ts", "t", "v", "_",
+        "sign", "signature", "expires", "expire", "token")
+    private val thumbnailHash = Regex("(/mfc/thumbnail/webp/)[0-9a-fA-F]{12,}/")
+    fun key(url: String): String {
+        val plain = url.substringBefore('#')
+        val path = thumbnailHash.replace(walletTransform.replace(
+            sizeSegment.replace(plain.substringBefore('?'), ""), "$1"), "$1")
+        val query = plain.substringAfter('?', "").split('&').filter { it.isNotBlank() }
+            .filterNot { it.substringBefore('=').lowercase() in volatileQuery }.sorted()
+        return path + if (query.isEmpty()) "" else "?" + query.joinToString("&")
+    }
 
     fun group(items: List<CardFaceItem>): List<CardFaceItem> = items.groupBy { key(it.url) }.values.flatMap { group ->
         if (group.mapNotNull { it.replacement }.distinct().size > 1 ||

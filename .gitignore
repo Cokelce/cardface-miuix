@@ -23,3 +23,9 @@ keystore.properties
 
 # 临时文件
 /tmp/
+
+# Local tooling and ephemeral execution
+.kotlin/
+__pycache__/
+*.pyc
+.ci-output/

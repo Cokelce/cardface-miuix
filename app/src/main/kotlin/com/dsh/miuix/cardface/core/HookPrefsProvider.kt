@@ -5,6 +5,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.os.Binder
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.graphics.Bitmap
@@ -188,6 +189,7 @@ class HookPrefsProvider : ContentProvider(), SharedPreferences.OnSharedPreferenc
         }
         return Bundle().apply { putBoolean(HookPrefsProtocol.RESULT_OK, ok) }
     }
+
 
     override fun getType(uri: Uri): String? = null
 

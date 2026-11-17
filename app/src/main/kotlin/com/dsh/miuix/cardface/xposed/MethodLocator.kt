@@ -459,7 +459,7 @@ class MethodLocator(
     }
 
     companion object {
-        const val OS_MIUI = 0
+        const val OS_MIUI = 0 // 保留旧配置枚举；HookEntry 仅派发一加钱包
         const val OS_ONEPLUS = 1
         const val ONEPLUS_PACKAGE = "com.finshell.wallet"
 
@@ -467,7 +467,7 @@ class MethodLocator(
         const val SLOT_REPLACE_ARG = 1
         const val SLOT_SUPER_ISLAND = 10
 
-        const val MIUI_PACKAGE = "com.miui.tsmclient"
+        const val MIUI_PACKAGE = "com.miui.tsmclient" // 仅兼容旧元数据，不作为 hook 入口
         private const val MIUI_UTIL_PACKAGE = "com.miui.tsmclient.util"
         private const val GLIDE_PACKAGE = "com.bumptech.glide"
         private const val GLIDE_REQUEST_MANAGER = "com.bumptech.glide.RequestManager"

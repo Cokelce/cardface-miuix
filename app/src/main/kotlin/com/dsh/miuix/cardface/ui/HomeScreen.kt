@@ -121,7 +121,6 @@ fun HomeScreen(
 
     var sheetFace by remember { mutableStateOf<CardFaceItem?>(null) }
     var renameFace by remember { mutableStateOf<CardFaceItem?>(null) }
-    var legacyMaterial by remember { mutableStateOf<CardFaceItem?>(null) }
     var demoLoading by remember { mutableStateOf(false) }
 
     val pullToRefreshState = rememberPullToRefreshState()
@@ -157,7 +156,6 @@ fun HomeScreen(
             item(span = { GridItemSpan(maxLineSpan) }, key = "header") {
                 LargeTitleHeader(
                     title = "卡面工坊",
-                    subtitle = "把卡包里千篇一律的卡面换成你喜欢的图",
                     contentPadding = PaddingValues(start = 4.dp, end = 2.dp, top = 14.dp, bottom = 10.dp),
                 ) {
                     IconButton(onClick = { isRefreshing = true }) {
@@ -277,12 +275,6 @@ fun HomeScreen(
             )
             RowDivider()
             top.yukonga.miuix.kmp.basic.BasicComponent(
-                title = "移除误识别的替换图",
-                summary = "仅用于旧替换图片条目；标记后不再自动采集",
-                onClick = { legacyMaterial = currentSheet; sheetFace = null },
-            )
-            RowDivider()
-            top.yukonga.miuix.kmp.basic.BasicComponent(
                 title = "加入黑名单",
                 summary = "从主界面隐藏这张卡面，不影响替换",
                 startAction = {
@@ -305,21 +297,6 @@ fun HomeScreen(
         }
         Spacer(Modifier.height(12.dp))
         TextButton(text = "取消", onClick = { sheetFace = null }, modifier = Modifier.fillMaxWidth())
-    }
-
-    legacyMaterial?.let { face ->
-        ConfirmDialog(show = true, title = "这张是旧替换图？",
-            message = "将移除这张图片的识别条目并保留替换素材标记。不会按同名处理其他卡片，也不修改钱包数据库。请勿用于真正的原始卡面。",
-            confirmText = "确认移除", destructive = false,
-            onConfirm = {
-                scope.launch {
-                    try {
-                        withContext(Dispatchers.IO) { prefs.discardReplacementEntry(face.url) }
-                        model.notify("旧替换图条目已移除，不再重复采集")
-                    } catch (t: Throwable) { model.notify(t.message ?: "移除失败") }
-                }
-                legacyMaterial = null
-            }, onDismiss = { legacyMaterial = null })
     }
 
     // 重命名对话框
@@ -424,12 +401,12 @@ private fun HeroStatusCard(
                             color = onSurface,
                         )
                         Text(
-                            text = "已识别 $faceCount 张 · 已设置 $replacedCount 张",
+                            text = "已识别 $faceCount 张 · 已替换 $replacedCount 张",
                             fontSize = 13.sp,
                             color = summaryColor,
                         )
                         Text(
-                            text = "LSPosed · 一加钱包 / 小米智能卡",
+                            text = "LSPosed · 一加钱包",
                             fontSize = 13.sp,
                             color = summaryColor,
                         )
@@ -578,7 +555,7 @@ private fun EmptyHomeCard(
         NumberedStep(
             index = 1,
             title = "在 LSPosed 里启用「卡面工坊」",
-            description = "勾选作用域：本机钱包（一加钱包 / 小米智能卡）",
+            description = "勾选作用域：一加钱包",
             done = status.lsposedInstalled && status.moduleActivated,
         )
         NumberedStep(
@@ -669,7 +646,7 @@ private fun CardFaceTile(
             )
             if (face.replaced) {
                 StatusPill(
-                    text = face.runtimeState,
+                    text = "已替换",
                     containerColor = MiuixTheme.colorScheme.primary,
                     contentColor = MiuixTheme.colorScheme.onPrimary,
                     modifier = Modifier
@@ -678,7 +655,7 @@ private fun CardFaceTile(
                 )
             } else {
                 StatusPill(
-                    text = "未设置",
+                    text = "未替换",
                     containerColor = MiuixTheme.colorScheme.onSurface.copy(alpha = 0.55f),
                     contentColor = MiuixTheme.colorScheme.surface,
                     modifier = Modifier
