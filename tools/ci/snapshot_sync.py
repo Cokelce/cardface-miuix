@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
-"""Run upstream snapshot import with a direct owner-delta patch.
-
-The owner adaptation is the diff from the recorded upstream base to the
-current owner main tree.  This avoids the temporary-index path that failed
-when upstream changed the same files in 2.1.0.
-"""
+"""Import upstream snapshot and overlay the latest owner-maintained adaptation."""
 from __future__ import annotations
 import subprocess
 import sys
 from pathlib import Path
-
 import sync_upstream as sync
 
 ROOT = sync.ROOT
@@ -26,17 +20,11 @@ def git(*args: str, check: bool = True) -> str:
 
 
 def pathspecs():
-    result = ["."]
-    for path in TRUSTED:
-        result.append(f":(exclude){path}")
-    for path in CONFIG:
-        result.append(f":(exclude){path}")
-    return result
+    return ["."] + [f":(exclude){p}" for p in [*TRUSTED, *CONFIG]]
 
 
 def import_snapshot(old: str, sha: str) -> bool:
-    # Capture only the owner's changes relative to the recorded upstream base.
-    # README, CI, release metadata and build identity are restored from main.
+    # Capture the current fork's owner delta, excluding README/CI/version metadata.
     patch = subprocess.run(
         ["git", "diff", "--binary", old, "origin/main", "--", *pathspecs()],
         cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -44,21 +32,29 @@ def import_snapshot(old: str, sha: str) -> bool:
     if patch.returncode:
         raise RuntimeError(patch.stderr.decode(errors="replace"))
 
+    # Start from the exact upstream snapshot, then overlay the owner delta.
     git("read-tree", "--reset", "-u", sha)
     git("restore", "--source=origin/main", "--staged", "--worktree", "--", *TRUSTED)
 
     if not patch.stdout:
         return True
     applied = subprocess.run(
-        ["git", "apply", "--3way", "--index", "-"],
-        input=patch.stdout, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        ["git", "apply", "--3way", "--index", "-"], input=patch.stdout,
+        cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
     )
     if applied.returncode:
-        files = git("diff", "--name-only", "--diff-filter=U", check=False).splitlines()
-        git("read-tree", "--reset", "-u", "origin/main")
-        sync.report_conflict(sha, files or ["owner adaptation delta does not apply cleanly"])
-        print("CONFLICT upstream=" + sha + " files=" + ",".join(files), file=sys.stderr)
-        return False
+        # The owner version wins only for files where upstream changed the same
+        # lines; all non-conflicting upstream changes remain in the tree.
+        conflicts = git("diff", "--name-only", "--diff-filter=U", check=False).splitlines()
+        if conflicts:
+            subprocess.run(["git", "checkout", "--theirs", """--""", *conflicts], cwd=ROOT, check=True)
+            git("add", "--", *conflicts)
+        remaining = git("diff", "--name-only", "--diff-filter=U", check=False).splitlines()
+        if remaining:
+            sync.report_conflict(sha, remaining)
+            git("read-tree", "--reset", "-u", "origin/main")
+            return False
+        print("OWNER_OVERLAY_CONFLICTS=" + ",".join(conflicts), file=sys.stderr)
     return True
 
 
