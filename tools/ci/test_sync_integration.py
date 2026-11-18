@@ -36,7 +36,7 @@ class GitSyncTests(unittest.TestCase):
         files = {
             'app/build.gradle.kts': 'applicationId = "io.github.miambao.cardface"\nversionCode = 20\nversionName = "2.0.0"\n',
             'app/src/main/kotlin/com/dsh/miuix/cardface/core/BuildInfo.kt': 'INTERNAL_VERSION = "2.0.0.20"\n',
-            'app/src/main/kotlin/com/dsh/miuix/cardface/core/Updates.kt': 'REPOSITORY = "MiamBao/cardface-miuix"\n',
+            'app/src/main/kotlin/com/dsh/miuix/cardface/core/Updates.kt': 'https://api.github.com/repos/MiamBao/cardface-miuix/releases/latest\nhttps://api.github.com/repos/MiamBao/cardface-miuix/releases?per_page=20\n',
             'app/src/main/kotlin/com/dsh/miuix/cardface/ui/InfoScreens.kt': 'OnePlus 15 / ColorOS 17（LSPosed 2.2.1）\nOnePlus 15 / ColorOS 17（LSPosed 2.2.1）\nhttps://github.com/Cokelce/cardface-miuix\n',
             'app/src/main/kotlin/com/dsh/miuix/cardface/ui/EditorScreen.kt': '从相册选 粘贴网址 从图库选 在线卡面\n',
             'app/src/main/kotlin/com/dsh/miuix/cardface/xposed/HookEngine.kt': 'fun hook() = "upstream-base"\n',
@@ -63,7 +63,7 @@ class GitSyncTests(unittest.TestCase):
         git(self.root, 'push', '-q', 'upstream', 'HEAD:main')
         self.put('app/build.gradle.kts', files['app/build.gradle.kts'].replace('io.github.miambao.cardface"', 'io.github.cardface.one"').replace('versionCode = 20', 'versionCode = 51').replace('"2.0.0"', '"2.0.0-261118"'))
         self.put('app/src/main/kotlin/com/dsh/miuix/cardface/core/BuildInfo.kt', 'INTERNAL_VERSION = "2.0.0.51"\n')
-        self.put('app/src/main/kotlin/com/dsh/miuix/cardface/core/Updates.kt', 'REPOSITORY = "Cokelce/cardface-miuix"\n')
+        self.put('app/src/main/kotlin/com/dsh/miuix/cardface/core/Updates.kt', 'https://api.github.com/repos/Cokelce/cardface-miuix/releases/latest\nhttps://api.github.com/repos/Cokelce/cardface-miuix/releases?per_page=20\n')
         self.put('app/src/main/resources/META-INF/xposed/scope.list', 'com.finshell.wallet\n')
         self.put('app/src/main/kotlin/com/dsh/miuix/cardface/xposed/HookEngine.kt', 'fun hook() = "oneplus-fork"\n')
         self.put('.github/upstream-state.json', json.dumps({'commit': self.base, 'base_version': '2.0.0', 'suffix': 5, 'version': '2.0.0-261118'}))

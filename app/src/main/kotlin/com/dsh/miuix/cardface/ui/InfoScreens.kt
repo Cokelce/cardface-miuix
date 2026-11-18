@@ -264,11 +264,10 @@ fun AboutScreen(
         if (checking) return
         checking = true
         scope.launch {
-            val check = withContext(Dispatchers.IO) { Updates.checkLatest() }
-            val latest = check.release
+            val latest = withContext(Dispatchers.IO) { Updates.fetchLatest() }
             checking = false
             if (latest == null) {
-                info = "检查更新" to check.message()
+                info = "检查更新" to "检查失败，请检查网络后重试。"
             } else if (latest.versionName.isNotBlank() && Updates.isNewer(latest.versionName, version)) {
                 info = "发现新版本 v${latest.versionName}" to
                     "当前版本：v$version\n最新版本：v${latest.versionName}\n\n" +
@@ -282,10 +281,9 @@ fun AboutScreen(
 
     fun showAnnouncement() {
         scope.launch {
-            val check = withContext(Dispatchers.IO) { Updates.checkLatest() }
-            val latest = check.release
+            val latest = withContext(Dispatchers.IO) { Updates.fetchLatest() }
             info = if (latest == null) {
-                "更新公告" to check.message()
+                "更新公告" to "获取失败，请检查网络后重试。"
             } else {
                 "更新公告 · v${latest.versionName}" to latest.body.ifBlank { "暂无更新说明" }
             }
@@ -381,7 +379,7 @@ fun AboutScreen(
                     HorizontalDivider()
                     SwitchPreference(
                         title = "自动检查更新",
-                        summary = "启动时检查 Cokelce/cardface-miuix，包含适配测试版",
+                        summary = "启动时检查 GitHub 最新版本",
                         checked = autoCheckUpdate,
                         onCheckedChange = {
                             autoCheckUpdate = it
@@ -804,11 +802,10 @@ fun VersionScreen(
         if (checking) return
         checking = true
         scope.launch {
-            val check = withContext(Dispatchers.IO) { Updates.checkLatest() }
-            val latest = check.release
+            val latest = withContext(Dispatchers.IO) { Updates.fetchLatest() }
             checking = false
             if (latest == null) {
-                info = "检查更新" to check.message()
+                info = "检查更新" to "检查失败，请检查网络后重试。"
             } else if (latest.versionName.isNotBlank() && Updates.isNewer(latest.versionName, version)) {
                 pendingUpdate = latest
             } else {
@@ -819,10 +816,9 @@ fun VersionScreen(
 
     fun showAnnouncement() {
         scope.launch {
-            val check = withContext(Dispatchers.IO) { Updates.checkLatest() }
-            val latest = check.release
+            val latest = withContext(Dispatchers.IO) { Updates.fetchLatest() }
             info = if (latest == null) {
-                "更新公告" to check.message()
+                "更新公告" to "获取失败，请检查网络后重试。"
             } else {
                 "更新公告 · v${latest.versionName}" to latest.body.ifBlank { "暂无更新说明" }
             }
@@ -902,7 +898,7 @@ fun VersionScreen(
                     )
                     SwitchPreference(
                         title = "自动检查更新",
-                        summary = "启动时检查 Cokelce/cardface-miuix，包含适配测试版",
+                        summary = "启动时检查 GitHub 最新版本",
                         checked = autoCheckUpdate,
                         onCheckedChange = {
                             autoCheckUpdate = it
@@ -972,8 +968,10 @@ fun VersionScreen(
                         if (updateProgress >= 0) return@TextButton
                         updateProgress = 0
                         scope.launch {
-                            val apk = com.dsh.miuix.cardface.core.VerifiedUpdateDownload.download(context, update) { p ->
-                                scope.launch { updateProgress = p }
+                            val apk = withContext(Dispatchers.IO) {
+                                com.dsh.miuix.cardface.core.UpdateInstaller.download(context, update.downloadUrl) { p ->
+                                    updateProgress = p
+                                }
                             }
                             updateProgress = -1
                             if (apk == null) {

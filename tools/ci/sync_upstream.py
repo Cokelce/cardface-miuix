@@ -122,7 +122,11 @@ def apply_config(base: str, code: int, version: str):
     replace_once(BUILD_INFO, r'INTERNAL_VERSION\s*=\s*["\'][^"\']+["\']', f'INTERNAL_VERSION = "{base}.{code}"')
     updates = ROOT / "app/src/main/kotlin/com/dsh/miuix/cardface/core/Updates.kt"
     if updates.exists():
-        replace_once(updates, r'REPOSITORY\s*=\s*["\'][^"\']+["\']', 'REPOSITORY = "Cokelce/cardface-miuix"')
+        text = updates.read_text(encoding="utf-8")
+        if 'REPOSITORY =' in text:
+            replace_once(updates, r'REPOSITORY\s*=\s*["\'][^"\']+["\']', 'REPOSITORY = "Cokelce/cardface-miuix"')
+        elif 'https://api.github.com/repos/Cokelce/cardface-miuix/releases/latest' not in text or 'https://api.github.com/repos/Cokelce/cardface-miuix/releases?per_page=20' not in text:
+            raise RuntimeError("snapshot updater endpoints do not match owner repository")
     (ROOT / "app/src/main/resources/META-INF/xposed/scope.list").write_text("com.finshell.wallet\n", encoding="utf-8")
 
 

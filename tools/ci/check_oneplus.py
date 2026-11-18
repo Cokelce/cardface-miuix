@@ -28,7 +28,7 @@ if not re.search(r'versionName\s*=\s*"\d+\.\d+\.\d+-\d{6}(?:[1-9]\d*)?"', gradle
 if re.findall(r'applicationId\s*=\s*"([^"]+)"', gradle) != ['io.github.cardface.one']: errors.append('applicationId mismatch')
 if re.search(r'android:name="com\.finshell\.wallet"', manifest) is None: errors.append("manifest scope missing")
 if scope.strip().splitlines() != ["com.finshell.wallet"]: errors.append("scope.list must contain only com.finshell.wallet")
-if 'REPOSITORY = "Cokelce/cardface-miuix"' not in updates: errors.append("Updates repository mismatch")
+if 'https://api.github.com/repos/Cokelce/cardface-miuix/releases/latest' not in updates or 'https://api.github.com/repos/Cokelce/cardface-miuix/releases?per_page=20' not in updates: errors.append("Updates repository mismatch")
 if info == "" or not re.search(r'INTERNAL_VERSION\s*=\s*"[^"]+"', info): errors.append("BuildInfo.INTERNAL_VERSION missing")
 for phrase in ("OnePlus 15 / ColorOS 17（LSPosed 2.2.1）", "OnePlus 15 / ColorOS 17"):
     if about.count(phrase) < 2: errors.append(f"wallet verification wording needs two occurrences: {phrase}")
