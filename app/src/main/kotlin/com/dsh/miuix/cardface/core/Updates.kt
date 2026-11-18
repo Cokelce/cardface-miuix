@@ -19,7 +19,7 @@ object Updates {
     data class ReleaseEntry(
         val date: String, val versionName: String, val body: String,
         val htmlUrl: String, val downloadUrl: String = "",
-        val expectedSize: Long = 0L, val sha256: String? = null,
+        val expectedSize: Long = 0L, val sha256: String? = null, val tag: String = "",
     )
 
     private fun request(): String? = runCatching {
@@ -38,12 +38,7 @@ object Updates {
     internal fun parseLatest(text: String): Release? {
         val latest = parseReleases(text).filter { it.downloadUrl.isNotBlank() }
             .maxWithOrNull { a, b -> UpdateVersion.compare(a.versionName, b.versionName) ?: 0 } ?: return null
-        val tag = JSONArray(text).let { array ->
-            (0 until array.length()).mapNotNull { array.optJSONObject(it) }
-                .firstOrNull { UpdateVersion.fromTag(it.optString("tag_name")) == latest.versionName }
-                ?.optString("tag_name") ?: "v${latest.versionName}"
-        }
-        return Release(latest.versionName, tag, latest.body, latest.htmlUrl, latest.downloadUrl, latest.expectedSize, latest.sha256)
+        return Release(latest.versionName, latest.tag, latest.body, latest.htmlUrl, latest.downloadUrl, latest.expectedSize, latest.sha256)
     }
 
     internal fun parseReleases(text: String): List<ReleaseEntry> {
@@ -66,7 +61,7 @@ object Updates {
                 ?: SHA256_IN_BODY.find(body)?.groupValues?.get(1)?.lowercase()
             ReleaseEntry(item.optString("published_at").take(10), version, body,
                 "https://github.com/$REPOSITORY/releases/tag/$tag", asset?.optString("browser_download_url").orEmpty(),
-                asset?.optLong("size")?.takeIf { it > 0 } ?: 0L, digest)
+                asset?.optLong("size")?.takeIf { it > 0 } ?: 0L, digest, tag)
         }
     }
 

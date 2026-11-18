@@ -59,9 +59,13 @@ object VerifiedUpdateDownload {
                         val actual = digest.digest().joinToString("") { "%02x".format(it) }
                         require(release.sha256.isNullOrBlank() || actual.equals(release.sha256, true))
                         require(UpdateArtifactPolicy.validateZip(part))
+                        require(verifyArchive(context, part, true, release.versionName))
                         val hash = actual
                         val final = File(dir, UpdateArtifactPolicy.finalName(release.versionName, hash))
-                        if (!final.exists()) require(part.renameTo(final)) else part.delete()
+                        if (!final.exists()) require(part.renameTo(final)) else {
+                            require(final.length() == total && sha256(final) == actual && verifyArchive(context, final, true, release.versionName))
+                            part.delete()
+                        }
                         return final
                     } }
                 }
@@ -73,12 +77,27 @@ object VerifiedUpdateDownload {
         } finally { connection?.disconnect() }
     }
 
-    @Suppress("unused")
-    private fun installedSignatureMatches(context: Context, file: File): Boolean = runCatching {
-        val info = context.packageManager.getPackageArchiveInfo(file.path,
-            PackageManager.GET_SIGNING_CERTIFICATES or PackageManager.GET_META_DATA) ?: return false
-        info.packageName == context.packageName && Build.VERSION.SDK_INT >= 28 &&
-            info.longVersionCode > context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode &&
-            info.signingInfo?.apkContentsSigners?.isNotEmpty() == true
+    private fun sha256(file: File): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(65536)
+            while (true) { val n = input.read(buffer); if (n < 0) break; md.update(buffer, 0, n) }
+        }
+        return md.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    fun verifyArchive(context: Context, file: File, requireNewer: Boolean, expectedVersion: String? = null): Boolean = runCatching {
+        require(UpdateArtifactPolicy.validateSize(file.length(), 0) && UpdateArtifactPolicy.validateZip(file))
+        val flags = PackageManager.GET_SIGNING_CERTIFICATES
+        val incoming = context.packageManager.getPackageArchiveInfo(file.absolutePath, flags) ?: return false
+        val installed = context.packageManager.getPackageInfo(context.packageName, flags)
+        require(incoming.packageName == context.packageName)
+        require(expectedVersion == null || incoming.versionName == expectedVersion)
+        require(if (requireNewer) incoming.longVersionCode > installed.longVersionCode else incoming.longVersionCode >= installed.longVersionCode)
+        fun signers(info: android.content.pm.PackageInfo): Set<String> = info.signingInfo?.apkContentsSigners.orEmpty()
+            .map { MessageDigest.getInstance("SHA-256").digest(it.toByteArray()).joinToString("") { b -> "%02x".format(b) } }.toSet()
+        val trusted = signers(installed)
+        require(trusted.isNotEmpty() && signers(incoming) == trusted)
+        true
     }.getOrDefault(false)
 }

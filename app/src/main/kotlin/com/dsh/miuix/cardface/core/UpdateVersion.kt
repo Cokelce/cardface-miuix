@@ -12,7 +12,7 @@ object UpdateVersion {
     fun compare(first: String, second: String): Int? {
         fun numbers(value: String): List<Long>? {
             val match = pattern.matchEntire(value.trim()) ?: return null
-            return (1..6).map { index ->
+            return listOf(1, 2, 3, 5, 4, 6).map { index ->
                 val part = match.groupValues[index]
                 if (part.isEmpty()) 0L else part.toLongOrNull() ?: return null
             }

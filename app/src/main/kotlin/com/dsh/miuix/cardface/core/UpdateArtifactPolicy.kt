@@ -5,7 +5,7 @@ import java.util.zip.ZipFile
 
 object UpdateArtifactPolicy {
     const val MAX_BYTES = 128L * 1024L * 1024L
-    private val VERSION = Regex("^[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]{6}(?:\\.[0-9]+)?$")
+    private val VERSION = Regex("^[0-9]+\\.[0-9]+\\.[0-9]+-[0-9]{6}(?:[1-9][0-9]*)?$")
     private val HASH = Regex("^[0-9a-f]{64}$")
 
     fun safeVersion(version: String): String = version.takeIf { VERSION.matches(it) } ?: "unknown"

@@ -34,4 +34,18 @@ class OnePlusUpdatesTest {
     @Test fun originalNumericPrefixTagsStillParseForChangelogComparison() {
         assertNull(UpdateVersion.fromTag("20-2.0.0"))
     }
+    @Test fun artifactVersionUsesUndottedSameDaySuffix() {
+        assertEquals("2.0.0-26111910", UpdateArtifactPolicy.safeVersion("2.0.0-26111910"))
+        assertEquals("unknown", UpdateArtifactPolicy.safeVersion("2.0.0-261119.10"))
+        assertEquals("unknown", UpdateArtifactPolicy.safeVersion("2.0.0-2611190"))
+    }
+    @Test fun selectedTagComesFromSelectedOfficialRelease() {
+        val text = "[${release("v2.0.0-261119", "\"draft\":true,")},${release("2.0.0-261119")}]"
+        assertEquals("2.0.0-261119", Updates.parseLatest(text)?.tag)
+    }
+    @Test fun comparesLegacyAndDateVersions() {
+        assertTrue(Updates.isNewer("2.0.1-261119", "2.0.1-oneplus.99"))
+        assertFalse(Updates.isNewer("2.0.1-oneplus.99", "2.0.1-261119"))
+        assertFalse(Updates.isNewer("garbage", "2.0.1-261119"))
+    }
 }
