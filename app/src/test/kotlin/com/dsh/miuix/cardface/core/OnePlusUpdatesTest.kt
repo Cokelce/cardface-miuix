@@ -11,18 +11,21 @@ class OnePlusUpdatesTest {
     """.trimIndent()
 
     @Test fun numericOnePlusBuildOrdering() {
-        assertTrue(Updates.isNewer("2.0.0-261119.10", "2.0.0-261119.9"))
-        assertTrue(Updates.isNewer("2.0.0-261119.1", "1.0.8-261119.12"))
-        assertFalse(Updates.isNewer("1.0.8-261119.12", "2.0.0-261119.1"))
-        assertFalse(Updates.isNewer("2.0.0-261119.1", "2.0.0-261119.1"))
+        assertTrue(Updates.isNewer("2.0.0-2611191", "2.0.0-261119"))
+        assertTrue(Updates.isNewer("2.0.0-261120", "2.0.0-26111999"))
+        assertNull(UpdateVersion.fromTag("2.0.0-261119.1"))
+        assertTrue(Updates.isNewer("2.0.0-26111910", "2.0.0-2611199"))
+        assertTrue(Updates.isNewer("2.0.0-2611191", "1.0.8-26111912"))
+        assertFalse(Updates.isNewer("1.0.8-26111912", "2.0.0-2611191"))
+        assertFalse(Updates.isNewer("2.0.0-2611191", "2.0.0-2611191"))
     }
-    @Test fun prereleaseIsIncludedAndLatestIsNumeric() {
-        val text = "[${release("v2.0.0-261119.9")},${release("v2.0.0-261119.10", "\"prerelease\":true,")}]"
-        assertEquals("2.0.0-261119.10", Updates.parseLatest(text)?.versionName)
+    @Test fun prereleaseIsExcludedAndLatestIsNumeric() {
+        val text = "[${release("v2.0.0-2611199")},${release("v2.0.0-26111910", "\"prerelease\":true,")}]"
+        assertEquals("2.0.0-2611199", Updates.parseLatest(text)?.versionName)
     }
     @Test fun draftsIncompleteAssetsAndForeignDownloadsAreExcluded() {
-        val text = "[${release("v2.0.0-261119.1")},${release("v2.0.0-261119.2", "\"draft\":true,")},${release("v2.0.0-261119.3", state="new")},${release("v2.0.0-261119.4", repo="MiamBao/cardface-miuix")}]"
-        assertEquals("2.0.0-261119.1", Updates.parseLatest(text)?.versionName)
+        val text = "[${release("v2.0.0-2611191")},${release("v2.0.0-2611192", "\"draft\":true,")},${release("v2.0.0-2611193", state="new")},${release("v2.0.0-2611194", repo="MiamBao/cardface-miuix")}]"
+        assertEquals("2.0.0-2611191", Updates.parseLatest(text)?.versionName)
     }
     @Test fun upstreamOnlyReleaseIsNotOffered() {
         assertNull(Updates.parseLatest("[${release("v3.0.0")}]"))

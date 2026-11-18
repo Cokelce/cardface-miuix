@@ -2,7 +2,7 @@ package com.dsh.miuix.cardface.core
 
 /** Pure version ordering for upstream versions and dated official builds. */
 object UpdateVersion {
-    private val pattern = Regex("^[vV]?(\\d+)\\.(\\d+)\\.(\\d+)(?:-oneplus\\.(\\d+)|-(\\d{6})(?:\\.(\\d+))?)?$")
+    private val pattern = Regex("^[vV]?(\\d+)\\.(\\d+)\\.(\\d+)(?:-oneplus\\.(\\d+)|-(\\d{6})([1-9]\\d*)?)?$")
 
     fun fromTag(tag: String): String? {
         val value = tag.trim()

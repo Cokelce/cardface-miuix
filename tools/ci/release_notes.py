@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[2]
 CURATED = ROOT / '.github' / 'release-notes.json'
 
 def notes(version: str) -> str:
-    if not re.fullmatch(r'\d+\.\d+\.\d+(?:-oneplus\.\d+|-\d{6}(?:\.\d+)?)', version):
+    if not re.fullmatch(r'\d+\.\d+\.\d+(?:-oneplus\.\d+|-\d{6}(?:[1-9]\d*)?)', version):
         raise ValueError('版本格式无效')
     data = json.loads(CURATED.read_text(encoding='utf-8'))
     entry = data.get(version)

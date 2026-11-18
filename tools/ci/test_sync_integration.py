@@ -46,11 +46,11 @@ class GitSyncTests(unittest.TestCase):
             'build.gradle.kts': '// toolchain\n', 'settings.gradle.kts': '// repositories\n',
             'gradle.properties': 'android.useAndroidX=true\n', 'gradlew': '#!/bin/sh\n',
             'gradle/wrapper/gradle-wrapper.properties': 'distributionUrl=gradle.zip\n',
-            '.github/workflows/sync.yml': '# trusted workflow\n', '.github/release-notes.json': json.dumps({'2.0.0-oneplus.5': {'upstream_changes':['基线更新。'], 'adaptation_changes':['一加钱包适配。']}}), '.gitignore': '__pycache__/\n',
+            '.github/workflows/sync.yml': '# trusted workflow\n', '.github/release-notes.json': json.dumps({'2.0.0-261118': {'upstream_changes':['基线更新。'], 'adaptation_changes':['一加钱包适配。']}}), '.gitignore': '__pycache__/\n',
         }
         for path, text in files.items():
             self.put(path, text)
-        for name in ('sync_upstream.py', 'check_oneplus.py', 'publish_prerelease.py'):
+        for name in ('sync_upstream.py', 'check_oneplus.py', 'publish_prerelease.py', 'publish_release.py'):
             self.put('tools/ci/' + name, (DEPLOY / 'tools/ci' / name).read_text())
         git(self.root, 'add', '-A')
         git(self.root, 'commit', '-qm', 'synthetic upstream base')
@@ -61,12 +61,12 @@ class GitSyncTests(unittest.TestCase):
             subprocess.run(['git', 'init', '--bare', '-q', str(remote)], check=True)
         git(self.root, 'remote', 'add', 'upstream', str(self.upstream))
         git(self.root, 'push', '-q', 'upstream', 'HEAD:main')
-        self.put('app/build.gradle.kts', files['app/build.gradle.kts'].replace('io.github.miambao.cardface"', 'io.github.cardface.one"').replace('versionCode = 20', 'versionCode = 51').replace('"2.0.0"', '"2.0.0-oneplus.5"'))
+        self.put('app/build.gradle.kts', files['app/build.gradle.kts'].replace('io.github.miambao.cardface"', 'io.github.cardface.one"').replace('versionCode = 20', 'versionCode = 51').replace('"2.0.0"', '"2.0.0-261118"'))
         self.put('app/src/main/kotlin/com/dsh/miuix/cardface/core/BuildInfo.kt', 'INTERNAL_VERSION = "2.0.0.51"\n')
         self.put('app/src/main/kotlin/com/dsh/miuix/cardface/core/Updates.kt', 'REPOSITORY = "Cokelce/cardface-miuix"\n')
         self.put('app/src/main/resources/META-INF/xposed/scope.list', 'com.finshell.wallet\n')
         self.put('app/src/main/kotlin/com/dsh/miuix/cardface/xposed/HookEngine.kt', 'fun hook() = "oneplus-fork"\n')
-        self.put('.github/upstream-state.json', json.dumps({'commit': self.base, 'base_version': '2.0.0', 'suffix': 5, 'version': '2.0.0-oneplus.5'}))
+        self.put('.github/upstream-state.json', json.dumps({'commit': self.base, 'base_version': '2.0.0', 'suffix': 5, 'version': '2.0.0-261118'}))
         git(self.root, 'add', '-A')
         git(self.root, 'commit', '-qm', 'synthetic OnePlus fork')
         git(self.root, 'remote', 'add', 'origin', str(self.origin))
@@ -106,7 +106,7 @@ class GitSyncTests(unittest.TestCase):
 
     def prepare(self):
         core = self.root / 'app/src/main/kotlin/com/dsh/miuix/cardface/core'
-        with patch.object(m, 'ROOT', self.root), patch.object(m, 'STATE', self.root / '.github/upstream-state.json'), patch.object(m, 'APP_GRADLE', self.root / 'app/build.gradle.kts'), patch.object(m, 'BUILD_INFO', core / 'BuildInfo.kt'), patch.object(m, 'api', self.fake_api), patch.dict(os.environ, {'GITHUB_OUTPUT': str(self.out), 'GITHUB_REPOSITORY': 'local/test', 'GH_TOKEN': 'local-only'}):
+        with patch.object(m, 'china_date', return_value='261119'), patch.object(m, 'ROOT', self.root), patch.object(m, 'STATE', self.root / '.github/upstream-state.json'), patch.object(m, 'APP_GRADLE', self.root / 'app/build.gradle.kts'), patch.object(m, 'BUILD_INFO', core / 'BuildInfo.kt'), patch.object(m, 'api', self.fake_api), patch.dict(os.environ, {'GITHUB_OUTPUT': str(self.out), 'GITHUB_REPOSITORY': 'local/test', 'GH_TOKEN': 'local-only'}):
             return m.prepare()
 
     def test_no_change(self):
@@ -119,7 +119,7 @@ class GitSyncTests(unittest.TestCase):
         self.assertIn('changed=true', self.out.read_text())
         self.assertIn('updated upstream', (self.root / 'README.md').read_text())
         self.assertTrue((self.root / 'README.md').read_text().startswith('> 本分支为 **OnePlus 和 OPPO 钱包适配版**'))
-        self.assertIn('version=2.0.0-oneplus.6', self.out.read_text())
+        self.assertIn('version=2.0.0-261119', self.out.read_text())
         self.assertEqual((self.root / '.github/workflows/sync.yml').read_text(), '# trusted workflow\n')
         self.assertIn('versionCode = 52', (self.root / 'app/build.gradle.kts').read_text())
         self.assertEqual(json.loads((self.root / '.github/upstream-state.json').read_text())['commit'], sha)
@@ -171,7 +171,7 @@ class GitSyncTests(unittest.TestCase):
         self.change_upstream({'app/build.gradle.kts': 'applicationId = "io.github.miambao.cardface"\nversionCode = 25\nversionName = "2.1.0"\n// upstream-new-dependency\n', 'app/src/main/kotlin/com/dsh/miuix/cardface/core/BuildInfo.kt': 'INTERNAL_VERSION = "2.1.0.25"\n'})
         self.assertEqual(self.prepare(), 0)
         text = (self.root / 'app/build.gradle.kts').read_text()
-        self.assertIn('versionName = "2.1.0-oneplus.1"', text)
+        self.assertIn('versionName = "2.1.0-261119"', text)
         self.assertIn('versionCode = 52', text)
         self.assertIn('upstream-new-dependency', text)
 
@@ -187,8 +187,8 @@ class GitSyncTests(unittest.TestCase):
         sha = self.change_upstream({'README.md': 'another update\n'})
         branch = 'automation/upstream-' + sha[:12]
         git(self.root, 'checkout', '-q', '-b', branch)
-        self.put('.github/upstream-state.json', json.dumps({'commit': sha, 'base_version': '2.0.0', 'suffix': 6, 'version': '2.0.0-oneplus.6'}))
-        self.put('app/build.gradle.kts', (self.root / 'app/build.gradle.kts').read_text().replace('oneplus.5', 'oneplus.6').replace('versionCode = 51', 'versionCode = 52'))
+        self.put('.github/upstream-state.json', json.dumps({'commit': sha, 'base_version': '2.0.0', 'suffix': 6, 'version': '2.0.0-261119'}))
+        self.put('app/build.gradle.kts', (self.root / 'app/build.gradle.kts').read_text().replace('261118', '261119').replace('versionCode = 51', 'versionCode = 52'))
         git(self.root, 'add', '-A')
         git(self.root, 'commit', '-qm', 'previously prepared adaptation')
         commit = git(self.root, 'rev-parse', 'HEAD')
@@ -197,15 +197,15 @@ class GitSyncTests(unittest.TestCase):
         git(self.root, 'branch', '-D', branch)
         return sha, branch, commit
 
-    def test_existing_branch_missing_release_resumes_without_force(self):
+    def test_old_candidate_is_rebuilt_from_main_without_force(self):
         sha, branch, commit = self.existing_adaptation()
         self.assertEqual(self.prepare(), 0)
         self.assertEqual(git(self.root, 'ls-remote', 'origin', f'refs/heads/{branch}').split()[0], commit)
         self.assertIn('changed=true', self.out.read_text())
-        self.assertIn('version=2.0.0-oneplus.6', self.out.read_text())
+        self.assertIn('version=2.0.0-261119', self.out.read_text())
         self.assertEqual(json.loads((self.root / '.github/upstream-state.json').read_text())['commit'], sha)
 
-    def test_resumed_candidate_uses_latest_owner_adapter(self):
+    def test_old_candidate_uses_latest_owner_adapter(self):
         _, _, _ = self.existing_adaptation()
         rel = 'app/src/main/kotlin/com/dsh/miuix/cardface/xposed/LaterOwnerHook.kt'
         self.put(rel, 'fun laterOwnerHook() = "latest"\n')
@@ -215,21 +215,22 @@ class GitSyncTests(unittest.TestCase):
         self.assertEqual(self.prepare(), 0)
         self.assertIn('laterOwnerHook', (self.root / rel).read_text())
 
-    def test_existing_published_branch_skips_build(self):
+    def test_existing_release_forces_fresh_suffix(self):
         _, branch, commit = self.existing_adaptation()
-        self.releases = [{'tag_name': 'v2.0.0-oneplus.6', 'draft': False, 'assets': [
-            {'name': 'CardFace-2.0.0-oneplus.6.apk', 'state': 'uploaded', 'size': 1200},
-            {'name': 'CardFace-2.0.0-oneplus.6.apk.sha256', 'state': 'uploaded', 'size': 95}]}]
+        self.releases = [{'tag_name': 'v2.0.0-261119', 'draft': False, 'assets': [
+            {'name': 'CardFace-2.0.0-261119.apk', 'state': 'uploaded', 'size': 1200},
+            {'name': 'CardFace-2.0.0-261119.apk.sha256', 'state': 'uploaded', 'size': 95}]}]
         self.assertEqual(self.prepare(), 0)
-        self.assertIn('changed=false', self.out.read_text())
+        self.assertIn('changed=true', self.out.read_text())
+        self.assertIn('version=2.0.0-2611191', self.out.read_text())
         self.assertEqual(git(self.root, 'ls-remote', 'origin', f'refs/heads/{branch}').split()[0], commit)
 
     def test_unmerged_published_tag_suffix_is_incremented(self):
         self.change_upstream({'README.md': 'third update\n'})
-        git(self.root, 'tag', 'v2.0.0-oneplus.8')
-        git(self.root, 'push', '-q', 'origin', 'v2.0.0-oneplus.8')
+        git(self.root, 'tag', 'v2.0.0-2611198')
+        git(self.root, 'push', '-q', 'origin', 'v2.0.0-2611198')
         self.assertEqual(self.prepare(), 0)
-        self.assertIn('version=2.0.0-oneplus.9', self.out.read_text())
+        self.assertIn('version=2.0.0-2611199', self.out.read_text())
 
 
 if __name__ == '__main__':

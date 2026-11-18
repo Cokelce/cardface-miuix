@@ -2,6 +2,7 @@
 """Import latest upstream source plus the latest owner-maintained OnePlus and OPPO wallet adaptation, without git merge."""
 from __future__ import annotations
 import argparse, json, os, re, subprocess, sys, tempfile
+from datetime import datetime, timezone, timedelta
 import publish_release as official_release
 from pathlib import Path
 from urllib import request, error, parse
@@ -77,9 +78,17 @@ def parse_base_version(text: str) -> str:
     return m.group(1)
 
 
-def next_version(base: str, old_base: str, old_suffix: int, current_code: int, tag_code: int):
-    suffix = old_suffix + 1 if base == old_base else 1
-    return f"{base}-oneplus.{suffix}", max(current_code, tag_code) + 1, suffix
+def next_dated_version(base: str, day: str, tags: list[str]) -> tuple[str, int]:
+    if not re.fullmatch(r"\d{6}", day):
+        raise ValueError("invalid date")
+    pattern = re.compile(r"v?" + re.escape(base) + "-" + day + r"([1-9]\d*)?$")
+    used = {int(m.group(1) or 0) for tag in tags if (m := pattern.fullmatch(tag))}
+    suffix = max(used, default=-1) + 1
+    return f"{base}-{day}{suffix if suffix else ''}", suffix
+
+
+def china_date() -> str:
+    return datetime.now(timezone(timedelta(hours=8))).strftime('%y%m%d')
 
 
 def replace_once(path: Path, pattern: str, repl: str, flags=0):
@@ -215,30 +224,21 @@ def prepare() -> int:
     if subprocess.run(['git', 'merge-base', '--is-ancestor', old, sha], cwd=ROOT).returncode != 0:
         raise RuntimeError(f'upstream is not a fast-forward from state commit {old}: {sha}')
     branch = f'automation/upstream-{sha[:12]}'
-    existing = git('ls-remote', '--heads', 'origin', f'refs/heads/{branch}')
-    if existing:
-        git('fetch', 'origin', f'refs/heads/{branch}:refs/remotes/origin/{branch}')
-        branch_state = json.loads(git('show', f'origin/{branch}:.github/upstream-state.json'))
-        branch_version = branch_state.get('version', '')
-        git('switch', '-C', branch, f'origin/{branch}')
-        if not import_snapshot(old, sha): return 2
-        sync_readme_from_upstream(sha)
-        existing_code = version_code(git('show', f'origin/{branch}:app/build.gradle.kts'))
-        apply_config(branch_state['base_version'], max(existing_code, version_code(git('show', 'origin/main:app/build.gradle.kts')) + 1), branch_version)
-        STATE.write_text(json.dumps(branch_state, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-        record_release_notes(branch_version, old, sha)
-        if subprocess.run([sys.executable, str(ROOT / 'tools/ci/check_oneplus.py')], cwd=ROOT).returncode:
-            raise RuntimeError('fixed OnePlus checks failed')
-        emit(changed='true', existing='true', branch=branch, upstream_sha=sha, version=branch_version)
-        return 0
-    git('switch', '-c', branch, 'origin/main')
+    git('switch', '-C', branch, 'origin/main')
     if not import_snapshot(old, sha): return 2
     sync_readme_from_upstream(sha)
     base = parse_base_version(git('show', f'{sha}:app/build.gradle.kts'))
     current = version_code(git('show', 'origin/main:app/build.gradle.kts'))
-    tag_suffixes = [int(match[1]) for tag in git('tag', '--format=%(refname:short)').splitlines() if (match := re.fullmatch(r'v?' + re.escape(base) + r'-oneplus\.(\d+)', tag))]
-    old_suffix = max([0] + tag_suffixes)
-    new_version, code, suffix = next_version(base, base if old_suffix else '', old_suffix, current, highest_tag_code())
+    tags = git('tag', '--format=%(refname:short)').splitlines()
+    # Reserve tags and all release names, including drafts.
+    page = 1
+    while True:
+        releases = api('GET', f'/releases?per_page=100&page={page}')
+        tags += [r['tag_name'] for r in releases if r.get('tag_name')]
+        if len(releases) < 100: break
+        page += 1
+    new_version, suffix = next_dated_version(base, china_date(), tags)
+    code = max(current, highest_tag_code()) + 1
     apply_config(base, code, new_version)
     record_release_notes(new_version, old, sha)
     if subprocess.run([sys.executable, str(ROOT / 'tools/ci/check_oneplus.py')], cwd=ROOT).returncode:

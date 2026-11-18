@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 from urllib import request, error, parse
 
-VERSION = re.compile(r'^\d+\.\d+\.\d+-oneplus\.\d+$')
+VERSION = re.compile(r'^\d+\.\d+\.\d+-\d{6}(?:[1-9]\d*)?$')
 SHA = re.compile(r'^[0-9a-f]{40}$')
 
 
@@ -53,7 +53,7 @@ def api(path, method='GET', payload=None, binary=None):
 
 
 def ready(release, version):
-    if release.get('draft', True) or release.get('official release', False):
+    if release.get('draft', True) or release.get('prerelease', False):
         return False
     names = {a.get('name') for a in release.get('assets', []) if a.get('state') == 'uploaded' and a.get('size', 0) > 0}
     return {f'CardFace-{version}.apk', f'CardFace-{version}.apk.sha256'} <= names
@@ -66,19 +66,27 @@ def publish(version, target, folder):
     from release_notes import notes
     body = notes(version)
     tag = 'v' + version
-    release = api('/releases/tags/' + tag)
+    release = None
+    page = 1
+    while True:
+        releases = api(f'/releases?per_page=100&page={page}') or []
+        release = next((r for r in releases if r.get('tag_name') == tag), None)
+        if release or len(releases) < 100: break
+        page += 1
     commit = api('/commits/' + target)
     if not commit or commit.get('sha') != target:
         raise RuntimeError('Release commit is not present in the target repository')
-    if release and not release.get('draft', True) and not release.get('official release', False):
-        if not ready(release, version):
-            raise RuntimeError('Official release incomplete; existing assets kept for review')
-        print('Official release already exists:', release['html_url'])
-        return release['html_url']
+    if release and not release.get('draft', True):
+        raise RuntimeError('Version collision: published release already exists; choose a new version')
+    if release and release.get('target_commitish') != target:
+        raise RuntimeError('Version collision: existing draft targets a different commit')
+    ref = api('/git/ref/tags/' + tag)
+    if ref and (not release or ref.get('object', {}).get('sha') != target):
+        raise RuntimeError('Version collision: tag already exists')
     if not release:
         release = api('/releases', 'POST', {'tag_name': tag, 'target_commitish': target,
             'name': f'卡面工坊 {version} · OnePlus 和 OPPO 钱包适配', 'body': body,
-            'draft': True, 'official release': False, 'make_latest': 'false'})
+            'draft': True, 'prerelease': False, 'make_latest': 'false'})
     assets = api(f"/releases/{release['id']}/assets") or []
     for file in (apk, checksum):
         found = next((a for a in assets if a.get('name') == file.name), None)
@@ -93,7 +101,7 @@ def publish(version, target, folder):
             raise RuntimeError('Asset upload did not complete: ' + file.name)
     complete = api(f"/releases/{release['id']}", 'PATCH', {
         'name': f'卡面工坊 {version} · OnePlus 和 OPPO 钱包适配', 'body': body,
-        'draft': False, 'official release': False, 'make_latest': True})
+        'draft': False, 'prerelease': False, 'make_latest': True})
     if not ready(complete, version):
         complete = api(f"/releases/{release['id']}")
         if not ready(complete, version):

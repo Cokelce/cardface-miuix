@@ -11,12 +11,11 @@ spec = importlib.util.spec_from_file_location("sync_upstream", p)
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 
 class PureVersionTests(unittest.TestCase):
-    def test_new_upstream_base_starts_at_one_and_increments_code(self):
-        self.assertEqual(m.next_version("2.1.0", "2.0.0", 5, 51, 100), ("2.1.0-oneplus.1", 101, 1))
-    def test_same_upstream_base_increments_suffix(self):
-        self.assertEqual(m.next_version("2.0.0", "2.0.0", 5, 51, 40), ("2.0.0-oneplus.6", 52, 6))
-    def test_tag_code_is_not_confused_with_tag_version(self):
-        self.assertEqual(m.next_version("1.0.8", "1.0.7", 11, 51, 45)[1], 52)
+    def test_date_and_collisions(self):
+        self.assertEqual(m.next_dated_version('2.1.0', '261119', []), ('2.1.0-261119', 0))
+        self.assertEqual(m.next_dated_version('2.1.0', '261119', ['v2.1.0-261119']), ('2.1.0-2611191', 1))
+        self.assertEqual(m.next_dated_version('2.1.0', '261119', ['v2.1.0-261119', 'v2.1.0-2611192']), ('2.1.0-2611193', 3))
+        self.assertEqual(m.next_dated_version('2.1.0', '261120', ['v2.1.0-2611199']), ('2.1.0-261120', 0))
     def test_base_version_parser(self):
         self.assertEqual(m.parse_base_version('versionName = "7.12.3"'), "7.12.3")
         with self.assertRaises(RuntimeError): m.parse_base_version('versionName = "dev"')

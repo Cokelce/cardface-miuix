@@ -24,7 +24,8 @@ about = text("app/src/main/kotlin/com/dsh/miuix/cardface/ui/InfoScreens.kt")
 all_kotlin = "\n".join(str(p.relative_to(ROOT)) + "\n" + p.read_text(encoding="utf-8", errors="replace")
                          for p in (ROOT / "app/src/main").rglob("*.kt"))
 
-if 'applicationId = "io.github.cardface.one"' not in gradle: errors.append("applicationId mismatch")
+if not re.search(r'versionName\s*=\s*"\d+\.\d+\.\d+-\d{6}(?:[1-9]\d*)?"', gradle): errors.append('current version format mismatch')
+if re.findall(r'applicationId\s*=\s*"([^"]+)"', gradle) != ['io.github.cardface.one']: errors.append('applicationId mismatch')
 if re.search(r'android:name="com\.finshell\.wallet"', manifest) is None: errors.append("manifest scope missing")
 if scope.strip().splitlines() != ["com.finshell.wallet"]: errors.append("scope.list must contain only com.finshell.wallet")
 if 'REPOSITORY = "Cokelce/cardface-miuix"' not in updates: errors.append("Updates repository mismatch")
@@ -50,7 +51,7 @@ try:
     import json
     notes = json.loads(release_notes)
     for version, entry in notes.items():
-        if not re.fullmatch(r"\d+\.\d+\.\d+(?:-oneplus\.\d+|-\d{6}(?:\.\d+)?)", version): errors.append(f"invalid release-notes version: {version}")
+        if not re.fullmatch(r"\d+\.\d+\.\d+(?:-oneplus\.\d+|-\d{6}(?:[1-9]\d*)?)", version): errors.append(f"invalid release-notes version: {version}")
         if not entry.get("upstream_changes") or not entry.get("adaptation_changes"): errors.append(f"release-notes sections missing: {version}")
         if any(re.search(r"(?i)(sha256|tests=|source commit|actions/runs|真机|签名检查)", item) for item in entry.get("upstream_changes", []) + entry.get("adaptation_changes", [])):
             errors.append(f"non-change metadata in release notes: {version}")

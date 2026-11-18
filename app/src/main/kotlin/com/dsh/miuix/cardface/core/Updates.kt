@@ -53,7 +53,7 @@ object Updates {
             if (item.optBoolean("draft", false) || item.optBoolean("prerelease", false)) return@mapNotNull null
             val tag = item.optString("tag_name")
             val version = UpdateVersion.fromTag(tag) ?: return@mapNotNull null
-            if (!version.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:-oneplus\\.[0-9]+|-[0-9]{6}(?:\\.[0-9]+)?)"))) return@mapNotNull null
+            if (!version.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:-oneplus\\.[0-9]+|-[0-9]{6}(?:[1-9][0-9]*)?)"))) return@mapNotNull null
             val assets = item.optJSONArray("assets") ?: JSONArray()
             val asset = (0 until assets.length()).mapNotNull { assets.optJSONObject(it) }.firstOrNull {
                 it.optString("name").startsWith("CardFace-") && it.optString("name").endsWith(".apk", true) &&
