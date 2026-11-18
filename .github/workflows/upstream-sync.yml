@@ -44,12 +44,12 @@ jobs:
           git add -A
           git commit -m "chore: sync upstream and adapt OnePlus as ${SYNC_VERSION}"
           git push origin HEAD:main
-      - name: Publish signed prerelease directly
+      - name: Publish checked official release
         if: steps.sync.outputs.changed == 'true'
         env:
           SYNC_VERSION: ${{ steps.sync.outputs.version }}
         run: |
-          python3 tools/ci/publish_prerelease.py --version "$SYNC_VERSION" --target "$(git rev-parse HEAD)"
+          python3 tools/ci/publish_release.py --version "$SYNC_VERSION" --target "$(git rev-parse HEAD)"
       - name: Report failure
         if: failure()
         run: |
