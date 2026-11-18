@@ -88,7 +88,7 @@ def publish(version, target, folder):
     body = notes(version)
     if not release:
         release = api('/releases', 'POST', {'tag_name': tag, 'target_commitish': target,
-                      'name': f'卡面工坊 {version} · OnePlus 和 OPPO 钱包适配预发布', 'body': body,
+                      'name': f'卡面工坊 {version}', 'body': body,
                       'draft': True, 'prerelease': True, 'make_latest': 'false'})
     # On retries only our unpublished draft may be completed; published files are never replaced.
     assets = api(f"/releases/{release['id']}/assets") or []
@@ -105,7 +105,7 @@ def publish(version, target, folder):
             raise RuntimeError('Asset upload did not complete: ' + file.name)
         if uploaded.get('digest') and uploaded['digest'] != 'sha256:' + hashlib.sha256(file.read_bytes()).hexdigest():
             raise RuntimeError('Uploaded digest mismatch')
-    complete = api(f"/releases/{release['id']}", 'PATCH', {'draft': False, 'prerelease': True, 'body': body, 'make_latest': 'false'})
+    complete = api(f"/releases/{release['id']}", 'PATCH', {'name': f'卡面工坊 {version}', 'draft': False, 'prerelease': True, 'body': body, 'make_latest': 'false'})
     if not release_assets_ready(complete, version):
         complete = api(f"/releases/{release['id']}")
         if not release_assets_ready(complete, version):

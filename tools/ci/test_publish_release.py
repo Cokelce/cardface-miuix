@@ -53,6 +53,38 @@ class OfficialReleaseTests(unittest.TestCase):
             with patch.object(m, 'api', side_effect=fake):
                 self.assertEqual(m.publish(version, 'a' * 40, folder), release['html_url'])
 
+    def test_new_and_resumed_draft_use_plain_title(self):
+        version = '2.1.0-261119'
+        for resumed in (False, True):
+            with self.subTest(resumed=resumed), tempfile.TemporaryDirectory() as folder:
+                self.artifact(folder, version)
+                uploads = []
+                calls = []
+                draft = {'id': 123, 'tag_name': 'v' + version, 'draft': True, 'target_commitish': 'a' * 40,
+                         'upload_url': 'https://uploads.github.com/repos/example/repo/releases/123/assets{?name}'}
+                def fake(path, method='GET', payload=None, binary=None):
+                    calls.append((path, method, payload))
+                    if path.startswith('/releases?'): return [draft] if resumed else []
+                    if path.startswith('/commits/'): return {'sha': 'a' * 40}
+                    if path.startswith('/git/ref/'): return None
+                    if path == '/releases' and method == 'POST': return draft
+                    if path == '/releases/123/assets': return uploads
+                    if path.startswith('https://uploads.github.com'):
+                        name = m.parse.parse_qs(m.parse.urlparse(path).query)['name'][0]
+                        item = {'name': name, 'state': 'uploaded', 'size': len(binary)}
+                        uploads.append(item)
+                        return item
+                    if path == '/releases/123' and method == 'PATCH':
+                        return {'draft': False, 'prerelease': False, 'assets': uploads, 'html_url': 'https://example.invalid'}
+                    raise AssertionError((path, method))
+                with patch.object(m, 'api', side_effect=fake):
+                    m.publish(version, 'a' * 40, folder)
+                writes = [payload for path, method, payload in calls if method in ('POST', 'PATCH') and isinstance(payload, dict)]
+                self.assertEqual(len(writes), 1 if resumed else 2)
+                for payload in writes:
+                    self.assertEqual(payload['name'], '卡面工坊 ' + version)
+                    self.assertIn('## OnePlus 和 OPPO 钱包适配', payload['body'])
+
     def test_checked_artifact(self):
         with tempfile.TemporaryDirectory() as folder:
             self.artifact(folder)

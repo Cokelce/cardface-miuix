@@ -65,6 +65,7 @@ class PrereleaseTests(unittest.TestCase):
                     return {'sha': 'a' * 40}
                 if path == '/releases' and method == 'POST':
                     self.assertTrue(payload['draft'])
+                    self.assertEqual(payload['name'], '卡面工坊 2.0.1-oneplus.1')
                     return {'id': 1, 'upload_url': 'https://uploads.github.com/repos/example/repo/releases/1/assets{?name}'}
                 if path == '/releases/1/assets':
                     return uploaded
@@ -75,6 +76,7 @@ class PrereleaseTests(unittest.TestCase):
                     return record
                 if path == '/releases/1' and method == 'PATCH':
                     self.assertEqual(len(uploaded), 2)
+                    self.assertEqual(payload['name'], '卡面工坊 2.0.1-oneplus.1')
                     self.assertTrue(payload['prerelease'])
                     self.assertFalse(payload['draft'])
                     return {'draft': False, 'assets': uploaded, 'html_url': 'https://example.invalid/release'}

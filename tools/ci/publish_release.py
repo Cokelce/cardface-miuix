@@ -88,7 +88,7 @@ def publish(version, target, folder):
         raise RuntimeError('Version collision: tag already exists')
     if not release:
         release = api('/releases', 'POST', {'tag_name': tag, 'target_commitish': target,
-            'name': f'卡面工坊 {version} · OnePlus 和 OPPO 钱包适配', 'body': body,
+            'name': f'卡面工坊 {version}', 'body': body,
             'draft': True, 'prerelease': False, 'make_latest': 'false'})
     assets = api(f"/releases/{release['id']}/assets") or []
     for file in (apk, checksum):
@@ -103,7 +103,7 @@ def publish(version, target, folder):
         if uploaded.get('state') != 'uploaded' or uploaded.get('size') != file.stat().st_size:
             raise RuntimeError('Asset upload did not complete: ' + file.name)
     complete = api(f"/releases/{release['id']}", 'PATCH', {
-        'name': f'卡面工坊 {version} · OnePlus 和 OPPO 钱包适配', 'body': body,
+        'name': f'卡面工坊 {version}', 'body': body,
         'draft': False, 'prerelease': False, 'make_latest': True})
     if not ready(complete, version):
         complete = api(f"/releases/{release['id']}")
