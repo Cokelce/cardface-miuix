@@ -28,7 +28,7 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
       - name: Import upstream snapshot and apply owner-maintained OnePlus adaptation
         id: sync
-        run: python3 tools/ci/sync_upstream.py prepare
+        run: python3 tools/ci/snapshot_sync.py prepare
       - name: Compile and test adaptation
         if: steps.sync.outputs.changed == 'true'
         uses: ./.github/actions/build-oneplus
