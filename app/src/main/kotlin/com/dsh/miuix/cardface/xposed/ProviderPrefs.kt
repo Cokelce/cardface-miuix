@@ -14,8 +14,8 @@ import com.dsh.miuix.cardface.core.HookPrefsProtocol
  * 必须像原版 DIY NFC卡面 的 n60 一样，直接通过 ContentResolver 访问模块自己的 provider。
  *
  * provider 的 URI 约定（与 core/HookPrefsProvider.kt 一致）：
- *   content://io.github.miambao.cardface.oneplus.preference/<prefs>
- *   content://io.github.miambao.cardface.oneplus.preference/<prefs>/<key>
+ *   content://io.github.cardface.one.preference/<prefs>
+ *   content://io.github.cardface.one.preference/<prefs>/<key>
  */
 class ProviderPrefs(context: Context) {
 

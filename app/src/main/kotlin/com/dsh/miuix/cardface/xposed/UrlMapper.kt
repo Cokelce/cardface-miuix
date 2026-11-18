@@ -15,7 +15,7 @@ package com.dsh.miuix.cardface.xposed
  */
 object UrlMapper {
 
-    const val IMAGE_AUTHORITY = "io.github.miambao.cardface.oneplus.images"
+    const val IMAGE_AUTHORITY = "io.github.cardface.one.images"
 
     /** 不需要 root 的图片地址前缀（ImageProvider，只读）。 */
     const val LOCAL_IMAGE_URI_PREFIX = "content://$IMAGE_AUTHORITY/images/"

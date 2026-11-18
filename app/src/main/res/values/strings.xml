@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">卡面工坊·一加</string>
+    <string name="app_name">卡面工坊·one</string>
     <string name="app_description">用 Miuix 重制的 NFC 卡面自定义模块，适配一加钱包 com.finshell.wallet</string>
 </resources>

@@ -10,7 +10,7 @@ spec.loader.exec_module(m)
 class NotesTests(unittest.TestCase):
     def test_only_two_user_facing_sections(self):
         text = m.notes('2.0.1-oneplus.1')
-        self.assertEqual([line for line in text.splitlines() if line.startswith('## ')], ['## 上游更新', '## 一加适配'])
+        self.assertEqual([line for line in text.splitlines() if line.startswith('## ')], ['## 上游更新', '## OnePlus 和 OPPO 钱包适配'])
         for extra in ['SHA256', 'Tests=', '源码提交', 'actions/runs', '真机验收', '签名检查', '唯一目标']:
             self.assertNotIn(extra, text)
         self.assertIn('上传损坏', text)

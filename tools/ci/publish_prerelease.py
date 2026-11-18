@@ -88,7 +88,7 @@ def publish(version, target, folder):
     body = notes(version)
     if not release:
         release = api('/releases', 'POST', {'tag_name': tag, 'target_commitish': target,
-                      'name': f'卡面工坊 {version} · 一加适配预发布', 'body': body,
+                      'name': f'卡面工坊 {version} · OnePlus 和 OPPO 钱包适配预发布', 'body': body,
                       'draft': True, 'prerelease': True, 'make_latest': 'false'})
     # On retries only our unpublished draft may be completed; published files are never replaced.
     assets = api(f"/releases/{release['id']}/assets") or []

@@ -61,7 +61,7 @@ class GitSyncTests(unittest.TestCase):
             subprocess.run(['git', 'init', '--bare', '-q', str(remote)], check=True)
         git(self.root, 'remote', 'add', 'upstream', str(self.upstream))
         git(self.root, 'push', '-q', 'upstream', 'HEAD:main')
-        self.put('app/build.gradle.kts', files['app/build.gradle.kts'].replace('io.github.miambao.cardface"', 'io.github.miambao.cardface.oneplus"').replace('versionCode = 20', 'versionCode = 51').replace('"2.0.0"', '"2.0.0-oneplus.5"'))
+        self.put('app/build.gradle.kts', files['app/build.gradle.kts'].replace('io.github.miambao.cardface"', 'io.github.cardface.one"').replace('versionCode = 20', 'versionCode = 51').replace('"2.0.0"', '"2.0.0-oneplus.5"'))
         self.put('app/src/main/kotlin/com/dsh/miuix/cardface/core/BuildInfo.kt', 'INTERNAL_VERSION = "2.0.0.51"\n')
         self.put('app/src/main/kotlin/com/dsh/miuix/cardface/core/Updates.kt', 'REPOSITORY = "Cokelce/cardface-miuix"\n')
         self.put('app/src/main/resources/META-INF/xposed/scope.list', 'com.finshell.wallet\n')
@@ -118,7 +118,7 @@ class GitSyncTests(unittest.TestCase):
         self.assertEqual(self.prepare(), 0)
         self.assertIn('changed=true', self.out.read_text())
         self.assertIn('updated upstream', (self.root / 'README.md').read_text())
-        self.assertTrue((self.root / 'README.md').read_text().startswith('> 本分支为 **一加钱包适配版**'))
+        self.assertTrue((self.root / 'README.md').read_text().startswith('> 本分支为 **OnePlus 和 OPPO 钱包适配版**'))
         self.assertIn('version=2.0.0-oneplus.6', self.out.read_text())
         self.assertEqual((self.root / '.github/workflows/sync.yml').read_text(), '# trusted workflow\n')
         self.assertIn('versionCode = 52', (self.root / 'app/build.gradle.kts').read_text())
@@ -134,7 +134,7 @@ class GitSyncTests(unittest.TestCase):
         self.assertEqual(self.prepare(), 0)
         synced_readme = (self.root / 'README.md').read_text()
         self.assertIn('upstream replacement without fork customizations', synced_readme)
-        self.assertTrue(synced_readme.startswith('> 本分支为 **一加钱包适配版**'))
+        self.assertTrue(synced_readme.startswith('> 本分支为 **OnePlus 和 OPPO 钱包适配版**'))
 
     def test_latest_owner_code_is_applied_without_upstream_merge_parent(self):
         adaptation = 'app/src/main/kotlin/com/dsh/miuix/cardface/xposed/OwnerAddedHook.kt'
@@ -165,7 +165,7 @@ class GitSyncTests(unittest.TestCase):
         self.change_upstream({'README.md': 'next upstream docs\n'})
         self.assertEqual(self.prepare(), 0)
         self.assertIn('owner-custom-dependency', (self.root / rel).read_text())
-        self.assertIn('io.github.miambao.cardface.oneplus', (self.root / rel).read_text())
+        self.assertIn('io.github.cardface.one', (self.root / rel).read_text())
 
     def test_upstream_app_version_conflict(self):
         self.change_upstream({'app/build.gradle.kts': 'applicationId = "io.github.miambao.cardface"\nversionCode = 25\nversionName = "2.1.0"\n// upstream-new-dependency\n', 'app/src/main/kotlin/com/dsh/miuix/cardface/core/BuildInfo.kt': 'INTERNAL_VERSION = "2.1.0.25"\n'})

@@ -107,7 +107,7 @@ fun GuideScreen(
                 NumberedStep(
                     index = 1,
                     title = "在 LSPosed 里启用模块",
-                    description = "勾选作用域：一加钱包。改完建议重启一次手机。",
+                    description = "勾选作用域：OnePlus 和 OPPO 钱包。改完建议重启一次手机。",
                     done = status?.lsposedInstalled == true && status.moduleActivated,
                     actionText = "打开 LSPosed",
                     onAction = {
@@ -162,7 +162,7 @@ fun GuideScreen(
             "打开方式：\n" +
             "1. 下拉通知栏；\n" +
             "2. 点「Android 系统 · Xposed 模块已更新」或「LSPosed」通知；\n" +
-            "3. 在模块列表里启用「卡面工坊」，勾选作用域（一加钱包）；\n" +
+            "3. 在模块列表里启用「卡面工坊」，勾选作用域（OnePlus 和 OPPO 钱包）；\n" +
             "4. 强行停止卡包，再打开卡包把卡面浏览一遍。",
         onDismiss = { showManagerHelp = false },
     )
@@ -176,9 +176,9 @@ private val FAQ_ITEMS = listOf(
     "改完卡面没有变化？" to
         "替换是在卡包进程里生效的，保存后要把卡包从后台划掉再重新打开（或等系统杀掉进程）。设置页的「清除 hook 点缓存」也会顺带重启卡包。",
     "识别不到任何卡面？" to
-        "先在 LSPosed 里确认「卡面工坊」已启用、作用域已勾选一加钱包，然后打开卡包把卡面浏览一遍，再回到首页下拉刷新。",
+        "先在 LSPosed 里确认「卡面工坊」已启用、作用域已勾选OnePlus 和 OPPO 钱包，然后打开卡包把卡面浏览一遍，再回到首页下拉刷新。",
     "LSPosed 作用域是什么？" to
-        "作用域决定模块要注入哪些应用。本模块只作用于一加钱包，勾选它就够了，不要全选。",
+        "作用域决定模块要注入哪些应用。本模块只作用于OnePlus 和 OPPO 钱包，勾选它就够了，不要全选。",
     "为什么有些小图没被识别？" to
         "默认会过滤掉卡包里的小图标（w270h480、logo、Mibi 之类），避免列表里塞满无关图片。",
     "黑名单有什么用？" to
@@ -186,7 +186,7 @@ private val FAQ_ITEMS = listOf(
     "图片会被上传吗？" to
         "不会。所有图片都在本机处理（裁剪和缩放都在手机上完成），应用没有上传逻辑，也不收集任何使用数据。",
     "支持哪些卡包？" to
-        "本适配版面向一加钱包（com.finshell.wallet）。",
+        "本适配版面向OnePlus 和 OPPO 钱包（com.finshell.wallet）。",
 )
 
 @Composable
@@ -333,7 +333,7 @@ fun AboutScreen(
                 }
                 Spacer(Modifier.height(14.dp))
                 Text(
-                    text = "把一加钱包里的卡面换成你喜欢的图片。\n" +
+                    text = "把OnePlus 和 OPPO 钱包里的卡面换成你喜欢的图片。\n" +
                         "基于原版「DIY NFC卡面图片」v2.4 重写：界面换成 Miuix（HyperOS 风格），" +
                         "图片缩放换成 Lanczos3（不再有锯齿），替换图通过 file:// 直接交给卡包加载。",
                     style = MiuixTheme.textStyles.body2,
@@ -425,7 +425,7 @@ fun AboutScreen(
                     AboutLine("高质量缩放", "缩放感知 Lanczos3 + 线性光，960×606 输出，细线/文字不再锯齿。")
                     AboutLine("替换方式", "替换图复制到卡包私有目录后以 file:// 加载（复制步骤需要 root）。")
                     AboutLine("小米智能卡", "在 Xiaomi 15 Pro / HyperOS（LSPosed 2.2.1）上真机验证通过。")
-                    AboutLine("一加钱包", "在 OnePlus 15 / ColorOS 17（LSPosed 2.2.1）上真机验证通过。")
+                    AboutLine("OnePlus 和 OPPO 钱包", "在 OnePlus 15 / ColorOS 17（LSPosed 2.2.1）上真机验证通过。")
                     AboutLine("外观可调", "澎湃蓝 / 动态取色 / 8 个预设色 / 深色模式 / 过渡动画。")
                     AboutLine("演示模式", "没装卡包也能完整体验选图、裁剪、卡面标志流程。")
                 }
@@ -494,7 +494,7 @@ fun AboutScreen(
                             "其他机型、系统版本或卡包版本可能存在差异。",
                     )
                     AboutLine(
-                        "一加钱包",
+                        "OnePlus 和 OPPO 钱包",
                         "在 OnePlus 15 / ColorOS 17（LSPosed 2.2.1）上真机验证通过。",
                     )
                     AboutLine(
@@ -968,10 +968,8 @@ fun VersionScreen(
                         if (updateProgress >= 0) return@TextButton
                         updateProgress = 0
                         scope.launch {
-                            val apk = withContext(Dispatchers.IO) {
-                                com.dsh.miuix.cardface.core.UpdateInstaller.download(context, update.downloadUrl) { p ->
-                                    updateProgress = p
-                                }
+                            val apk = com.dsh.miuix.cardface.core.VerifiedUpdateDownload.download(context, update) { p ->
+                                scope.launch { updateProgress = p }
                             }
                             updateProgress = -1
                             if (apk == null) {

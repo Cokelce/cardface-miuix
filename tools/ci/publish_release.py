@@ -53,7 +53,7 @@ def api(path, method='GET', payload=None, binary=None):
 
 
 def ready(release, version):
-    if release.get('draft', True) or release.get('prerelease', False):
+    if release.get('draft', True) or release.get('official release', False):
         return False
     names = {a.get('name') for a in release.get('assets', []) if a.get('state') == 'uploaded' and a.get('size', 0) > 0}
     return {f'CardFace-{version}.apk', f'CardFace-{version}.apk.sha256'} <= names
@@ -70,15 +70,15 @@ def publish(version, target, folder):
     commit = api('/commits/' + target)
     if not commit or commit.get('sha') != target:
         raise RuntimeError('Release commit is not present in the target repository')
-    if release and not release.get('draft', True) and not release.get('prerelease', False):
+    if release and not release.get('draft', True) and not release.get('official release', False):
         if not ready(release, version):
             raise RuntimeError('Official release incomplete; existing assets kept for review')
         print('Official release already exists:', release['html_url'])
         return release['html_url']
     if not release:
         release = api('/releases', 'POST', {'tag_name': tag, 'target_commitish': target,
-            'name': f'卡面工坊 {version} · 一加适配', 'body': body,
-            'draft': True, 'prerelease': False, 'make_latest': 'false'})
+            'name': f'卡面工坊 {version} · OnePlus 和 OPPO 钱包适配', 'body': body,
+            'draft': True, 'official release': False, 'make_latest': 'false'})
     assets = api(f"/releases/{release['id']}/assets") or []
     for file in (apk, checksum):
         found = next((a for a in assets if a.get('name') == file.name), None)
@@ -92,8 +92,8 @@ def publish(version, target, folder):
         if uploaded.get('state') != 'uploaded' or uploaded.get('size') != file.stat().st_size:
             raise RuntimeError('Asset upload did not complete: ' + file.name)
     complete = api(f"/releases/{release['id']}", 'PATCH', {
-        'name': f'卡面工坊 {version} · 一加适配', 'body': body,
-        'draft': False, 'prerelease': False, 'make_latest': True})
+        'name': f'卡面工坊 {version} · OnePlus 和 OPPO 钱包适配', 'body': body,
+        'draft': False, 'official release': False, 'make_latest': True})
     if not ready(complete, version):
         complete = api(f"/releases/{release['id']}")
         if not ready(complete, version):

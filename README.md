@@ -1,5 +1,3 @@
-> 本分支为 **一加钱包适配版**，自动同步上游最新源码并叠加本仓库 main 的一加适配；在线卡面页面与功能沿用上游，编辑页保留「从相册选、粘贴网址、从图库选、在线卡面」四入口。
->
 <p align="center">
   <img src="docs/icon.png" alt="卡面工坊" width="112"/>
 </p>
@@ -7,7 +5,7 @@
 <h1 align="center">卡面工坊</h1>
 
 <p align="center">
-  给小米智能卡、一加钱包换一张喜欢的卡面<br/>
+  给小米智能卡、OnePlus 和 OPPO 钱包换一张喜欢的卡面<br/>
   <sub>LSPosed 模块 · Miuix（HyperOS）界面 · Lanczos3 图像管线</sub>
 </p>
 
@@ -25,7 +23,7 @@
 
 ## 这是什么
 
-「卡面工坊」是一个给小米智能卡、一加钱包换卡面的 LSPosed 模块。不用改系统，把你喜欢的画、角色、照片，变成卡包里每天都会看到的那一张卡。
+「卡面工坊」是一个给小米智能卡、OnePlus 和 OPPO 钱包换卡面的 LSPosed 模块。不用改系统，把你喜欢的画、角色、照片，变成卡包里每天都会看到的那一张卡。
 
 这个项目最早是「DIY NFC 卡面图片」的界面与体验重构：原版功能没问题，但 UI 比较粗糙，风格也旧了。这次按 Miuix 的 HyperOS 风格把整套界面重做了一遍，图片缩放、裁剪这些细节也重新写了一次。
 
@@ -75,13 +73,13 @@
 
 - Android 13+（minSdk 33，targetSdk 36，compileSdk 37）
 - 已 root，并安装 **LSPosed**（libxposed API 101+）
-- 卡包：小米智能卡（`com.miui.tsmclient`）、一加钱包（`com.finshell.wallet`）；本分支维护一加钱包适配。
+- 卡包：小米智能卡、OnePlus 和 OPPO 钱包
 - 参考验证环境：Xiaomi 15 Pro / HyperOS 4 / LSPosed 2.2.1 + 小米智能卡
 
 ## 安装与使用
 
-1. 下载 Release 里的 `CardFace-v2.1.0.apk` 并安装。
-2. 在 LSPosed 里启用「卡面工坊」，作用域勾选：小米智能卡、一加钱包；本分支重点适配一加钱包（`com.finshell.wallet`）。
+1. 下载 Release 里的 `CardFace-<当前版本>.apk` 并安装。
+2. 在 LSPosed 里启用「卡面工坊」，作用域勾选：小米智能卡。
 3. 打开卡包，把卡面浏览一遍，让 hook 记录到卡面地址。
 4. 回到「卡面工坊」→ 点一张卡面 → 从相册 / 在线卡面库选图 → 裁剪 / 加标志 → 保存并应用。
 5. 在设置里点「一键重启卡包」，卡面即生效。

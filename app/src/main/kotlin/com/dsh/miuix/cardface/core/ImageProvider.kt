@@ -47,6 +47,6 @@ class ImageProvider : ContentProvider() {
     ): Int = throw UnsupportedOperationException("read-only provider")
 
     companion object {
-        const val AUTHORITY = "io.github.miambao.cardface.oneplus.images"
+        const val AUTHORITY = "io.github.cardface.one.images"
     }
 }

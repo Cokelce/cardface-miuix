@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Import latest upstream source plus the latest owner-maintained OnePlus adaptation, without git merge."""
+"""Import latest upstream source plus the latest owner-maintained OnePlus and OPPO wallet adaptation, without git merge."""
 from __future__ import annotations
 import argparse, json, os, re, subprocess, sys, tempfile
 import publish_release as official_release
@@ -91,7 +91,7 @@ def replace_once(path: Path, pattern: str, repl: str, flags=0):
 
 
 def apply_config(base: str, code: int, version: str):
-    replace_once(APP_GRADLE, r'applicationId\s*=\s*["\'][^"\']+["\']', 'applicationId = "io.github.miambao.cardface.oneplus"')
+    replace_once(APP_GRADLE, r'applicationId\s*=\s*["\'][^"\']+["\']', 'applicationId = "io.github.cardface.one"')
     replace_once(APP_GRADLE, r'versionCode\s*=\s*\d+', f'versionCode = {code}')
     replace_once(APP_GRADLE, r'versionName\s*=\s*["\'][^"\']+["\']', f'versionName = "{version}"')
     replace_once(BUILD_INFO, r'INTERNAL_VERSION\s*=\s*["\'][^"\']+["\']', f'INTERNAL_VERSION = "{base}.{code}"')
@@ -120,8 +120,12 @@ TRUSTED_PATHS = ["README.md", ".github", "tools/ci", "build.gradle.kts", "gradle
 UPSTREAM_CONFIG = ["app/build.gradle.kts", "app/src/main/kotlin/com/dsh/miuix/cardface/core/BuildInfo.kt"]
 
 
+
+def managed_conflict(path: str) -> bool:
+    return path in UPSTREAM_CONFIG or any(path == entry or path.startswith(entry + "/") for entry in TRUSTED_PATHS)
+
 def report_conflict(sha: str, files: list[str]):
-    body = (f"上游同步 `{sha}` 应用一加适配补丁时发生冲突，已回退未提交的源码导入，保留你仓库当前代码。\n\n"
+    body = (f"上游同步 `{sha}` 应用OnePlus 和 OPPO 钱包适配补丁时发生冲突，已回退未提交的源码导入，保留你仓库当前代码。\n\n"
             "受影响文件：\n" + "\n".join(f"- `{x}`" for x in files) +
             "\n\n请人工处理冲突后再运行构建验证；`upstream-state.json` 保持不变。")
     create_issue(f"upstream sync conflict: {sha[:12]}", body)
@@ -159,8 +163,8 @@ def sync_readme_from_upstream(sha: str) -> None:
     readme = readme.replace("2. 在 LSPosed 里启用「卡面工坊」，作用域勾选：小米智能卡。", "2. 在 LSPosed 里启用「卡面工坊」，作用域勾选：小米智能卡、一加钱包；本分支重点适配一加钱包（`com.finshell.wallet`）。", 1)
     readme = re.sub(r'(?m)^- GitHub Releases：<https://github\.com/MiamBao/cardface-miuix/releases/latest>\n', "- GitHub Releases：<https://github.com/Cokelce/cardface-miuix/releases/latest>\n", readme)
     readme = re.sub(r'(?m)^- LSPosed 模块仓库：<https://github\.com/Xposed-Modules-Repo/io\.github\.miambao\.cardface>\n?', "", readme)
-    prefix = "> 本分支为 **一加钱包适配版**，自动同步上游最新源码并叠加本仓库 main 的一加适配；在线卡面页面与功能沿用上游，编辑页保留「从相册选、粘贴网址、从图库选、在线卡面」四入口。\n>\n"
-    if not readme.startswith("> 本分支为 **一加钱包适配版**"):
+    prefix = "> 本分支为 **OnePlus 和 OPPO 钱包适配版**，自动同步上游最新源码并叠加本仓库 main 的OnePlus 和 OPPO 钱包适配；在线卡面页面与功能沿用上游，编辑页保留「从相册选、粘贴网址、从图库选、在线卡面」四入口。\n>\n"
+    if not readme.startswith("> 本分支为 **OnePlus 和 OPPO 钱包适配版**"):
         readme = prefix + readme
     (ROOT / "README.md").write_text(readme, encoding="utf-8")
 

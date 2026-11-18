@@ -1,8 +1,8 @@
 package com.dsh.miuix.cardface.core
 
-/** Pure version ordering for upstream versions and this fork's oneplus.N builds. */
+/** Pure version ordering for upstream versions and dated official builds. */
 object UpdateVersion {
-    private val pattern = Regex("^[vV]?(\\d+)\\.(\\d+)\\.(\\d+)(?:-oneplus\\.(\\d+))?$")
+    private val pattern = Regex("^[vV]?(\\d+)\\.(\\d+)\\.(\\d+)(?:-oneplus\\.(\\d+)|-(\\d{6})(?:\\.(\\d+))?)?$")
 
     fun fromTag(tag: String): String? {
         val value = tag.trim()
@@ -12,7 +12,7 @@ object UpdateVersion {
     fun compare(first: String, second: String): Int? {
         fun numbers(value: String): List<Long>? {
             val match = pattern.matchEntire(value.trim()) ?: return null
-            return (1..4).map { index ->
+            return (1..6).map { index ->
                 val part = match.groupValues[index]
                 if (part.isEmpty()) 0L else part.toLongOrNull() ?: return null
             }
