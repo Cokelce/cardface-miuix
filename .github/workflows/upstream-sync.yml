@@ -7,7 +7,6 @@ on:
     branches: [main]
 permissions:
   contents: write
-  pull-requests: write
   issues: write
 concurrency:
   group: upstream-oneplus-sync
@@ -33,23 +32,19 @@ jobs:
         run: python3 tools/ci/snapshot_sync.py prepare
       - name: Compile and test adaptation
         if: steps.sync.outputs.changed == 'true'
-        uses: ./.github/actions/build-oneplus
+        uses: ./ .github/actions/build-oneplus
         with:
           signing-keystore: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
           artifact-name: upstream-${{ steps.sync.outputs.upstream_sha }}
-      - name: Push verified adaptation and open PR
+      - name: Commit synced source directly to main
         if: steps.sync.outputs.changed == 'true'
         env:
-          SYNC_BRANCH: ${{ steps.sync.outputs.branch }}
           SYNC_VERSION: ${{ steps.sync.outputs.version }}
         run: |
           git add -A
-          if ! git diff --cached --quiet; then
-            git commit -m "chore: adapt upstream as ${SYNC_VERSION}"
-            git push origin "HEAD:refs/heads/${SYNC_BRANCH}"
-          fi
-          python3 tools/ci/sync_upstream.py publish --branch "$SYNC_BRANCH" --version "$SYNC_VERSION"
-      - name: Publish signed prerelease without merging main
+          git commit -m "chore: sync upstream and adapt OnePlus as ${SYNC_VERSION}"
+          git push origin HEAD:main
+      - name: Publish signed prerelease directly
         if: steps.sync.outputs.changed == 'true'
         env:
           SYNC_VERSION: ${{ steps.sync.outputs.version }}
@@ -58,4 +53,4 @@ jobs:
       - name: Report failure
         if: failure()
         run: |
-          python3 tools/ci/sync_upstream.py report "自动同步或编译失败：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}。现役 main 未自动改动，详情见工作流日志。"
+          python3 tools/ci/sync_upstream.py report "自动同步、编译或发布失败：${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}。详情见工作流日志。"
