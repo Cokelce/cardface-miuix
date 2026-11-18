@@ -16,6 +16,11 @@ class PureVersionTests(unittest.TestCase):
         self.assertEqual(m.next_dated_version('2.1.0', '261119', ['v2.1.0-261119']), ('2.1.0-2611191', 1))
         self.assertEqual(m.next_dated_version('2.1.0', '261119', ['v2.1.0-261119', 'v2.1.0-2611192']), ('2.1.0-2611193', 3))
         self.assertEqual(m.next_dated_version('2.1.0', '261120', ['v2.1.0-2611199']), ('2.1.0-261120', 0))
+    def test_date_rollback_and_invalid_dates(self):
+        self.assertEqual(m.next_dated_version('2.1.0', '261118', ['v2.1.0-2611199']), ('2.1.0-26111910', 10))
+        for invalid in ('261332', '2611300', 'abcdef'):
+            with self.assertRaises(ValueError): m.next_dated_version('2.1.0', invalid, [])
+
     def test_base_version_parser(self):
         self.assertEqual(m.parse_base_version('versionName = "7.12.3"'), "7.12.3")
         with self.assertRaises(RuntimeError): m.parse_base_version('versionName = "dev"')

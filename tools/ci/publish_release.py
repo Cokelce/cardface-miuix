@@ -77,7 +77,10 @@ def publish(version, target, folder):
     if not commit or commit.get('sha') != target:
         raise RuntimeError('Release commit is not present in the target repository')
     if release and not release.get('draft', True):
-        raise RuntimeError('Version collision: published release already exists; choose a new version')
+        if not ready(release, version):
+            raise RuntimeError('Existing published release is incomplete; preserved for review')
+        print('Existing published release preserved:', release['html_url'])
+        return release['html_url']
     if release and release.get('target_commitish') != target:
         raise RuntimeError('Version collision: existing draft targets a different commit')
     ref = api('/git/ref/tags/' + tag)

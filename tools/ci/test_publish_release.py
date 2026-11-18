@@ -35,8 +35,23 @@ class OfficialReleaseTests(unittest.TestCase):
                 if path.startswith('/commits/'): return {'sha': 'a' * 40}
                 raise AssertionError(path)
             with patch.object(m, 'api', side_effect=fake):
-                with self.assertRaisesRegex(RuntimeError, 'collision'):
+                with self.assertRaisesRegex(RuntimeError, 'incomplete'):
                     m.publish('2.1.0-261119', 'a' * 40, folder)
+
+    def test_existing_complete_release_is_untouched(self):
+        version = '2.1.0-261119'
+        assets = [{'name': f'CardFace-{version}.apk', 'state': 'uploaded', 'size': 1000},
+                  {'name': f'CardFace-{version}.apk.sha256', 'state': 'uploaded', 'size': 90}]
+        release = {'tag_name': 'v' + version, 'draft': False, 'prerelease': False,
+                   'assets': assets, 'html_url': 'https://example.invalid/release'}
+        def fake(path, *args, **kwargs):
+            if path.startswith('/releases?'): return [release]
+            if path.startswith('/commits/'): return {'sha': 'a' * 40}
+            raise AssertionError((path, args))
+        with tempfile.TemporaryDirectory() as folder:
+            self.artifact(folder)
+            with patch.object(m, 'api', side_effect=fake):
+                self.assertEqual(m.publish(version, 'a' * 40, folder), release['html_url'])
 
     def test_checked_artifact(self):
         with tempfile.TemporaryDirectory() as folder:

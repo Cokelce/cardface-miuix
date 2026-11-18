@@ -114,7 +114,7 @@ class GitSyncTests(unittest.TestCase):
         self.assertEqual(self.out.read_text(), 'changed=false\n')
 
     def test_readme_change(self):
-        sha = self.change_upstream({'README.md': 'updated upstream\n', '.github/workflows/sync.yml': '# untrusted upstream automation\n'})
+        sha = self.change_upstream({'README.md': 'updated upstream\n'})
         self.assertEqual(self.prepare(), 0)
         self.assertIn('changed=true', self.out.read_text())
         self.assertIn('updated upstream', (self.root / 'README.md').read_text())
@@ -123,6 +123,12 @@ class GitSyncTests(unittest.TestCase):
         self.assertEqual((self.root / '.github/workflows/sync.yml').read_text(), '# trusted workflow\n')
         self.assertIn('versionCode = 52', (self.root / 'app/build.gradle.kts').read_text())
         self.assertEqual(json.loads((self.root / '.github/upstream-state.json').read_text())['commit'], sha)
+
+    def test_upstream_protected_ci_change_stops_and_reports(self):
+        self.change_upstream({'.github/workflows/sync.yml': '# upstream changed\n'})
+        self.assertEqual(self.prepare(), 2)
+        self.assertEqual((self.root / '.github/workflows/sync.yml').read_text(), '# trusted workflow\n')
+        self.assertTrue(any(verb == 'POST' and path == '/issues' for verb, path, _ in self.calls))
 
     def test_latest_fork_readme_wins_even_on_conflict(self):
         custom = '小米智能卡、一加钱包\nhttps://github.com/Cokelce/cardface-miuix/releases/latest\n'
@@ -174,6 +180,21 @@ class GitSyncTests(unittest.TestCase):
         self.assertIn('versionName = "2.1.0-261119"', text)
         self.assertIn('versionCode = 52', text)
         self.assertIn('upstream-new-dependency', text)
+
+    def test_root_config_nonconflicting_changes_survive(self):
+        self.put('gradle.properties', 'android.useAndroidX=true\nowner.setting=true\n')
+        git(self.root, 'add', 'gradle.properties')
+        git(self.root, 'commit', '-qm', 'owner config')
+        git(self.root, 'push', '-q', 'origin', 'HEAD:main')
+        self.change_upstream({'gradle.properties': 'android.useAndroidX=true\nupstream.setting=true\n'})
+        # Same insertion location is a genuine conflict: stop rather than choose a side.
+        self.assertEqual(self.prepare(), 2)
+        self.assertIn('owner.setting=true', (self.root / 'gradle.properties').read_text())
+
+    def test_real_snapshot_entry_uses_fail_closed_implementation(self):
+        import snapshot_sync
+        self.assertIs(snapshot_sync.sync.import_snapshot, snapshot_sync.sync.__dict__['import_snapshot'])
+        self.assertEqual(snapshot_sync.sync.import_snapshot.__module__, 'sync_upstream')
 
     def test_business_conflict_aborts(self):
         self.change_upstream({'app/src/main/kotlin/com/dsh/miuix/cardface/xposed/HookEngine.kt': 'fun hook() = "changed-upstream-hook"\n'})

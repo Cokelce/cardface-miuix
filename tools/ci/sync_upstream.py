@@ -79,10 +79,26 @@ def parse_base_version(text: str) -> str:
 
 
 def next_dated_version(base: str, day: str, tags: list[str]) -> tuple[str, int]:
-    if not re.fullmatch(r"\d{6}", day):
+    if not re.fullmatch(r"\d+\.\d+\.\d+", base):
+        raise ValueError("invalid base version")
+    try:
+        datetime.strptime(day, "%y%m%d")
+        if not re.fullmatch(r"\d{6}", day): raise ValueError()
+    except ValueError:
         raise ValueError("invalid date")
-    pattern = re.compile(r"v?" + re.escape(base) + "-" + day + r"([1-9]\d*)?$")
-    used = {int(m.group(1) or 0) for tag in tags if (m := pattern.fullmatch(tag))}
+    pattern = re.compile(r"v?" + re.escape(base) + r"-(\d{6})([1-9]\d*)?$")
+    versions = []
+    for tag in tags:
+        m = pattern.fullmatch(tag)
+        if m:
+            try:
+                datetime.strptime(m.group(1), "%y%m%d")
+            except ValueError:
+                continue
+            versions.append((m.group(1), int(m.group(2) or 0)))
+    if versions:
+        day = max(day, max(d for d, _ in versions))
+    used = [suffix for d, suffix in versions if d == day]
     suffix = max(used, default=-1) + 1
     return f"{base}-{day}{suffix if suffix else ''}", suffix
 
@@ -125,7 +141,7 @@ def emit(**values):
             out.write(lines)
 
 
-TRUSTED_PATHS = ["README.md", ".github", "tools/ci", "build.gradle.kts", "gradle.properties", "settings.gradle.kts", "gradlew", "gradle", ".gitignore"]
+TRUSTED_PATHS = ["README.md", ".github", "tools/ci"]
 UPSTREAM_CONFIG = ["app/build.gradle.kts", "app/src/main/kotlin/com/dsh/miuix/cardface/core/BuildInfo.kt"]
 
 
@@ -179,6 +195,10 @@ def sync_readme_from_upstream(sha: str) -> None:
 
 
 def import_snapshot(old, sha):
+    protected_changes = git('diff', '--name-only', old, sha, '--', '.github', 'tools/ci').splitlines()
+    if protected_changes:
+        report_conflict(sha, protected_changes)
+        return False
     folder = ROOT / '.ci-output'
     folder.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='snapshot-index-', dir=folder) as temporary:
@@ -204,8 +224,10 @@ def import_snapshot(old, sha):
         applied = subprocess.run(['git', 'apply', '--3way', '--index', '-'], input=patch, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if applied.returncode:
             files = git('diff', '--name-only', '--diff-filter=U', check=False).splitlines()
+            detail = applied.stderr.decode(errors='replace').strip()
+            print('SNAPSHOT_APPLY_FAILED: ' + detail, file=sys.stderr)
             git('read-tree', '--reset', '-u', 'origin/main')
-            report_conflict(sha, files or ['adaptation patch did not apply cleanly'])
+            report_conflict(sha, files or ['adaptation patch did not apply cleanly: ' + detail[:1000]])
             return False
     return True
 
@@ -230,6 +252,7 @@ def prepare() -> int:
     base = parse_base_version(git('show', f'{sha}:app/build.gradle.kts'))
     current = version_code(git('show', 'origin/main:app/build.gradle.kts'))
     tags = git('tag', '--format=%(refname:short)').splitlines()
+    tags.append(state.get('version', ''))
     # Reserve tags and all release names, including drafts.
     page = 1
     while True:
