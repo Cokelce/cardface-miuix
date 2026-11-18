@@ -32,7 +32,7 @@ jobs:
         run: python3 tools/ci/snapshot_sync.py prepare
       - name: Compile and test adaptation
         if: steps.sync.outputs.changed == 'true'
-        uses: ./ .github/actions/build-oneplus
+        uses: ./.github/actions/build-oneplus
         with:
           signing-keystore: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
           artifact-name: upstream-${{ steps.sync.outputs.upstream_sha }}
