@@ -49,3 +49,28 @@ class OnePlusUpdatesTest {
         assertFalse(Updates.isNewer("garbage", "2.0.1-261119"))
     }
 }
+
+class WebFallbackTest {
+    private val tag = "v2.1.0-2611193"
+    private val link = "/${Updates.REPOSITORY}/releases/download/$tag/CardFace-2.1.0-2611193.apk"
+    private val hash = "a".repeat(64)
+    private fun html(path: String = link, digest: String = hash) = "<li><a href=\"$path\">apk</a><span>sha256:$digest</span></li>"
+    @Test fun parsesOnlyObservedAssetAndHash() {
+        val release = Updates.parseWebAssets(tag, html())!!
+        assertEquals("https://github.com$link", release.downloadUrl)
+        assertEquals(hash, release.sha256)
+        assertEquals("2.1.0-2611193", release.versionName)
+    }
+    @Test fun rejectsForeignOrMissingDigestOrMultipleAssets() {
+        assertNull(Updates.parseWebAssets(tag, html(link.replace("Cokelce", "other"))))
+        assertNull(Updates.parseWebAssets(tag, html(digest = "bad")))
+        assertNull(Updates.parseWebAssets(tag, html() + html(link.replace("CardFace-", "CardFace-other-"))))
+        assertNull(Updates.tagFromLatestLocation("https://evil.example/Cokelce/cardface-miuix/releases/tag/$tag"))
+        assertNull(Updates.tagFromLatestLocation("/Cokelce/cardface-miuix/releases/tag/v3.0.0"))
+    }
+    @Test fun messagesDistinguishFailures() {
+        assertTrue(Updates.Check(error=Updates.Error.RATE_LIMIT).message().contains("受限"))
+        assertTrue(Updates.Check(error=Updates.Error.NETWORK).message().contains("网络"))
+        assertTrue(Updates.Check(error=Updates.Error.PARSE).message().contains("解析"))
+    }
+}

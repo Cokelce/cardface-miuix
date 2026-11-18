@@ -264,10 +264,11 @@ fun AboutScreen(
         if (checking) return
         checking = true
         scope.launch {
-            val latest = withContext(Dispatchers.IO) { Updates.fetchLatest() }
+            val check = withContext(Dispatchers.IO) { Updates.checkLatest() }
+            val latest = check.release
             checking = false
             if (latest == null) {
-                info = "检查更新" to "检查失败，请检查网络后重试。"
+                info = "检查更新" to check.message()
             } else if (latest.versionName.isNotBlank() && Updates.isNewer(latest.versionName, version)) {
                 info = "发现新版本 v${latest.versionName}" to
                     "当前版本：v$version\n最新版本：v${latest.versionName}\n\n" +
@@ -281,9 +282,10 @@ fun AboutScreen(
 
     fun showAnnouncement() {
         scope.launch {
-            val latest = withContext(Dispatchers.IO) { Updates.fetchLatest() }
+            val check = withContext(Dispatchers.IO) { Updates.checkLatest() }
+            val latest = check.release
             info = if (latest == null) {
-                "更新公告" to "获取失败，请检查网络后重试。"
+                "更新公告" to check.message()
             } else {
                 "更新公告 · v${latest.versionName}" to latest.body.ifBlank { "暂无更新说明" }
             }
@@ -802,10 +804,11 @@ fun VersionScreen(
         if (checking) return
         checking = true
         scope.launch {
-            val latest = withContext(Dispatchers.IO) { Updates.fetchLatest() }
+            val check = withContext(Dispatchers.IO) { Updates.checkLatest() }
+            val latest = check.release
             checking = false
             if (latest == null) {
-                info = "检查更新" to "检查失败，请检查网络后重试。"
+                info = "检查更新" to check.message()
             } else if (latest.versionName.isNotBlank() && Updates.isNewer(latest.versionName, version)) {
                 pendingUpdate = latest
             } else {
@@ -816,9 +819,10 @@ fun VersionScreen(
 
     fun showAnnouncement() {
         scope.launch {
-            val latest = withContext(Dispatchers.IO) { Updates.fetchLatest() }
+            val check = withContext(Dispatchers.IO) { Updates.checkLatest() }
+            val latest = check.release
             info = if (latest == null) {
-                "更新公告" to "获取失败，请检查网络后重试。"
+                "更新公告" to check.message()
             } else {
                 "更新公告 · v${latest.versionName}" to latest.body.ifBlank { "暂无更新说明" }
             }

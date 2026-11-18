@@ -17,8 +17,8 @@ android {
         applicationId = "io.github.cardface.one"
         minSdk = 33
         targetSdk = 36
-        versionCode = 22461193
-        versionName = "2.1.0-2611192"
+        versionCode = 22461194
+        versionName = "2.1.0-2611193"
     }
 
     // 签名信息从本地的 keystore.properties 读取（该文件与 keystore/ 都不入库）。

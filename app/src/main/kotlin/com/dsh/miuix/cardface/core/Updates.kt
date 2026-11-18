@@ -22,18 +22,72 @@ object Updates {
         val expectedSize: Long = 0L, val sha256: String? = null, val tag: String = "",
     )
 
-    private fun request(): String? = runCatching {
-        val conn = URL(API).openConnection() as HttpURLConnection
+    enum class Error { RATE_LIMIT, NETWORK, PARSE, HTTP }
+    data class Check(val release: Release? = null, val error: Error? = null) {
+        fun message(): String = when (error) {
+            Error.RATE_LIMIT -> "GitHub 请求受限，请稍后重试。"
+            Error.NETWORK -> "网络连接失败，请检查网络后重试。"
+            Error.PARSE -> "更新信息解析失败，请稍后重试。"
+            else -> "GitHub 服务返回异常，请稍后重试。"
+        }
+    }
+    private class RequestFailure(val kind: Error) : Exception()
+    private fun request(url: String, redirect: Boolean = true): Pair<String, String?> {
+        val conn = URL(url).openConnection() as HttpURLConnection
         conn.connectTimeout = 10000; conn.readTimeout = 10000; conn.useCaches = false
+        conn.instanceFollowRedirects = redirect
         conn.setRequestProperty("User-Agent", "CardFace-OnePlus")
-        conn.setRequestProperty("Accept", "application/vnd.github+json")
-        conn.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
-        try { if (conn.responseCode == 200) conn.inputStream.bufferedReader().use { it.readText() } else null }
-        finally { conn.disconnect() }
-    }.getOrNull()
+        try {
+            val code = conn.responseCode
+            if (!redirect && code in 300..399) return "" to conn.getHeaderField("Location")
+            if (code != 200) throw RequestFailure(if (code == 429 || (code == 403 &&
+                (conn.getHeaderField("X-RateLimit-Remaining") == "0" || conn.getHeaderField("Retry-After") != null ||
+                 conn.errorStream?.bufferedReader()?.use { it.readText().contains("rate limit", true) } == true))) Error.RATE_LIMIT else Error.HTTP)
+            return conn.inputStream.bufferedReader().use { it.readText() } to null
+        } finally { conn.disconnect() }
+    }
+    private fun failure(t: Throwable): Error = when (t) {
+        is RequestFailure -> t.kind
+        is java.io.IOException -> Error.NETWORK
+        else -> Error.PARSE
+    }
+    fun checkLatest(): Check {
+        val api = runCatching { parseLatest(request(API).first) ?: throw IllegalArgumentException() }
+        api.getOrNull()?.let { return Check(release = it) }
+        val original = failure(api.exceptionOrNull()!!)
+        val fallback = runCatching {
+            val location = request("https://github.com/$REPOSITORY/releases/latest", false).second ?: throw IllegalArgumentException()
+            val tag = tagFromLatestLocation(location) ?: throw IllegalArgumentException()
+            val fragment = request("https://github.com/$REPOSITORY/releases/expanded_assets/$tag", false).first
+            parseWebAssets(tag, fragment) ?: throw IllegalArgumentException()
+        }
+        return fallback.getOrNull()?.let { Check(release = it) } ?: Check(error =
+            if (original == Error.RATE_LIMIT) original else failure(fallback.exceptionOrNull()!!).let { if (it == Error.PARSE) it else original })
+    }
+    fun fetchLatest(): Release? = checkLatest().release
+    fun fetchReleases(): List<ReleaseEntry>? = runCatching { parseReleases(request(API).first) }.getOrNull()
 
-    fun fetchLatest(): Release? = request()?.let { runCatching { parseLatest(it) }.getOrNull() }
-    fun fetchReleases(): List<ReleaseEntry>? = request()?.let { runCatching { parseReleases(it) }.getOrNull() }
+    internal fun tagFromLatestLocation(location: String): String? {
+        val prefix = "https://github.com/$REPOSITORY/releases/tag/"
+        val value = if (location.startsWith("/$REPOSITORY/releases/tag/")) location.removePrefix("/$REPOSITORY/releases/tag/")
+            else if (location.startsWith(prefix)) location.removePrefix(prefix) else return null
+        val version = UpdateVersion.fromTag(value) ?: return null
+        return value.takeIf { version.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+(?:-oneplus\\.[0-9]+|-[0-9]{6}(?:[1-9][0-9]*)?)")) }
+    }
+    internal fun parseWebAssets(tag: String, html: String): Release? {
+        if (tagFromLatestLocation("/$REPOSITORY/releases/tag/$tag") != tag) return null
+        val version = UpdateVersion.fromTag(tag) ?: return null
+        val prefix = "/$REPOSITORY/releases/download/$tag/"
+        val links = Regex("href=[\"']([^\"']+)[\"']").findAll(html).map { it.groupValues[1] }
+            .filter { it.startsWith(prefix) && it.removePrefix(prefix).matches(Regex("CardFace-[A-Za-z0-9._-]+\\.apk")) }.distinct().toList()
+        if (links.size != 1) return null
+        val link = links.single()
+        val start = html.indexOf("href=\"$link\"").takeIf { it >= 0 } ?: return null
+        val end = html.indexOf("</li>", start).takeIf { it >= 0 } ?: return null
+        val chunk = html.substring(start, end)
+        val hash = Regex("sha256:([0-9a-fA-F]{64})").find(chunk)?.groupValues?.get(1)?.lowercase() ?: return null
+        return Release(version, tag, "", "https://github.com/$REPOSITORY/releases/tag/$tag", "https://github.com$link", 0, hash)
+    }
 
     internal fun parseLatest(text: String): Release? {
         val latest = parseReleases(text).filter { it.downloadUrl.isNotBlank() }
