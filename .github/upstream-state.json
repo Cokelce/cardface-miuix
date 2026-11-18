@@ -1,7 +1,7 @@
 {
-  "commit": "c0833af5ff1392f84f431a9d0ae78892062aad6e",
-  "branch": "",
-  "version": "2.0.0-oneplus.5",
-  "suffix": 5,
-  "base_version": "2.0.0"
+  "commit": "6cccc48b6beffa28a4a66451e163beb28fe92255",
+  "branch": "automation/upstream-6cccc48b6bef",
+  "version": "2.1.0-oneplus.1",
+  "suffix": 1,
+  "base_version": "2.1.0"
 }

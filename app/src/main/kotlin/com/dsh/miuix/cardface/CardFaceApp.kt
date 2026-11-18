@@ -22,12 +22,18 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.height
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -73,8 +79,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.glass.GlassNavigationBar
+import top.yukonga.miuix.kmp.glass.GlassNavigationItem
 import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTopAppBar
@@ -139,8 +148,24 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
     var pendingGalleryName by remember { mutableStateOf("") }
     val route = nav.current
     val currentPage = route.page
+    val tabPages = listOf(Page.Home, Page.Gallery, Page.Settings)
+    val tabIndex = tabPages.indexOf(currentPage).takeIf { it >= 0 } ?: 0
+    val tabPagerState = rememberPagerState(initialPage = tabIndex) { tabPages.size }
 
     BackHandler(enabled = nav.canGoBack) { nav.pop() }
+
+    LaunchedEffect(tabPagerState.settledPage) {
+        if (currentPage.isTab) {
+            val target = tabPages[tabPagerState.settledPage]
+            if (currentPage != target) nav.resetTo(target)
+        }
+    }
+    LaunchedEffect(currentPage) {
+        if (currentPage.isTab) {
+            val index = tabPages.indexOf(currentPage)
+            if (index >= 0 && tabPagerState.currentPage != index) tabPagerState.scrollToPage(index)
+        }
+    }
 
     // 首次启动：直接进引导页（首页作为返回栈底，返回键不会退出应用）。
     LaunchedEffect(Unit) {
@@ -182,24 +207,37 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
         },
         bottomBar = {
             if (currentPage.isTab && !model.galleryPreviewVisible && !model.posterPreviewVisible) {
-                FloatingNavigationBar() {
-                    FloatingTabItem(
-                        selected = currentPage == Page.Home,
-                        onClick = { nav.resetTo(Page.Home) },
-                        icon = MiuixIcons.Home,
-                        label = "卡面",
-                    )
-                    FloatingTabItem(
-                        selected = currentPage == Page.Gallery,
-                        onClick = { nav.resetTo(Page.Gallery) },
-                        icon = MiuixIcons.Photos,
-                        label = "图库",
-                    )
-                    FloatingTabItem(
-                        selected = currentPage == Page.Settings,
-                        onClick = { nav.resetTo(Page.Settings) },
-                        icon = MiuixIcons.Settings,
-                        label = "设置",
+                val tabs = listOf(
+                    GlassNavigationItem(MiuixIcons.Home, "卡面", "卡面"),
+                    GlassNavigationItem(MiuixIcons.Photos, "图库", "图库"),
+                    GlassNavigationItem(MiuixIcons.Settings, "设置", "设置"),
+                )
+                val selected = if (currentPage.isTab) {
+                    tabPagerState.currentPage
+                } else {
+                    when (currentPage) {
+                        Page.Home -> 0
+                        Page.Gallery -> 1
+                        else -> 2
+                    }
+                }
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = androidx.compose.ui.Alignment.Center,
+                ) {
+                    GlassNavigationBar(
+                        items = tabs,
+                        selectedIndex = selected,
+                        onSelect = { index ->
+                            scope.launch { tabPagerState.animateScrollToPage(index) }
+                        },
+                        backdrop = null,
+                        height = 56.dp,
+                        defaultWindowInsetsPadding = true,
+                        modifier = Modifier
+                            .widthIn(max = 330.dp)
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp),
                     )
                 }
             }
@@ -215,8 +253,58 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
         containerColor = MiuixTheme.colorScheme.surface,
     ) { innerPadding ->
         AnimatedContent(
-            targetState = route,
+            targetState = currentPage.isTab,
             modifier = Modifier.fillMaxSize(),
+            transitionSpec = {
+                if (!animationsEnabled) {
+                    EnterTransition.None togetherWith ExitTransition.None
+                } else if (targetState) {
+                    (slideInHorizontally(tween(260)) { -it / 3 } + fadeIn(tween(180))) togetherWith
+                        (slideOutHorizontally(tween(240)) { it / 3 } + fadeOut(tween(160)))
+                } else {
+                    (slideInHorizontally(tween(260)) { it / 3 } + fadeIn(tween(180))) togetherWith
+                        (slideOutHorizontally(tween(240)) { -it / 3 } + fadeOut(tween(160)))
+                }
+            },
+            label = "tabShell",
+        ) { isTab ->
+        if (isTab) {
+
+            HorizontalPager(
+                state = tabPagerState,
+                modifier = Modifier.fillMaxSize(),
+            ) { index ->
+                when (tabPages[index]) {
+                    Page.Home -> HomeScreen(
+                        model = model,
+                        innerPadding = innerPadding,
+                        onOpenEditor = { url -> model.openEditor(url); nav.push(Route(Page.Editor, url)) },
+                        onOpenFaq = { nav.push(Route(Page.Faq)) },
+                        onOpenGuide = { nav.push(Route(Page.Guide)) },
+                    )
+                    Page.Gallery -> GalleryScreen(
+                        model = model,
+                        innerPadding = innerPadding,
+                        onPickForCrop = { uris ->
+                            model.startCropBatch(CropTarget.Gallery, uris)
+                            if (uris.isNotEmpty()) nav.push(Route(Page.Crop))
+                        },
+                        onOpenCatalog = { model.openCatalog(CropTarget.Gallery); nav.push(Route(Page.Catalog)) },
+                    )
+                    else -> SettingsScreen(
+                        model = model,
+                        innerPadding = innerPadding,
+                        onOpenBlacklist = { nav.push(Route(Page.Blacklist)) },
+                        onOpenAbout = { nav.push(Route(Page.About)) },
+                        onOpenVersion = { nav.push(Route(Page.Version)) },
+                    )
+                }
+            }
+        } else {
+        AnimatedContent(
+            targetState = route,
+            modifier = Modifier
+                .fillMaxSize(),
             transitionSpec = {
                 if (!animationsEnabled) {
                     EnterTransition.None togetherWith ExitTransition.None
@@ -266,6 +354,7 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                         model.openEditor(url)
                         nav.push(Route(Page.Editor, url))
                     },
+                    onOpenFaq = { nav.push(Route(Page.Faq)) },
                     onOpenGuide = { nav.push(Route(Page.Guide)) },
                 )
 
@@ -286,8 +375,6 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                     model = model,
                     innerPadding = innerPadding,
                     onOpenBlacklist = { nav.push(Route(Page.Blacklist)) },
-                    onOpenGuide = { nav.push(Route(Page.Guide)) },
-                    onOpenFaq = { nav.push(Route(Page.Faq)) },
                     onOpenAbout = { nav.push(Route(Page.About)) },
                     onOpenVersion = { nav.push(Route(Page.Version)) },
                 )
@@ -404,8 +491,6 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                     model = model,
                     innerPadding = innerPadding,
                     onBack = { nav.pop() },
-                    onOpenGuide = { nav.push(Route(Page.Guide)) },
-                    onOpenFaq = { nav.push(Route(Page.Faq)) },
                     onOpenChangelog = { nav.push(Route(Page.Changelog)) },
                 )
 
@@ -428,6 +513,8 @@ private fun CardFaceRoot(model: AppModel, animationsEnabled: Boolean) {
                 )
             }
             }
+        }
+        }
         }
 
     val saveBitmap = pendingGallerySave

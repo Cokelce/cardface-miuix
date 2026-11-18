@@ -30,20 +30,28 @@ object AppBackup {
                     zip.closeEntry()
                 }
             }
-            val images = File(context.filesDir, "images")
-            images.listFiles()?.filter { it.isFile }?.forEach { img ->
-                zip.putNextEntry(ZipEntry("images/${img.name}"))
-                img.inputStream().use { it.copyTo(zip) }
-                zip.closeEntry()
+            fun addDir(dir: File, prefix: String) {
+                dir.listFiles()?.filter { it.isFile }?.forEach { img ->
+                    // 重装后 UID 变化或文件损坏时跳过，别让一张图拖垮整个备份。
+                    if (!img.canRead()) return@forEach
+                    runCatching {
+                        zip.putNextEntry(ZipEntry("$prefix/${img.name}"))
+                        img.inputStream().use { it.copyTo(zip) }
+                        zip.closeEntry()
+                    }
+                }
             }
+            addDir(File(context.filesDir, "images"), "images")
+            // 映射实际指向 applied/（应用后的合成图），以前漏掉了这个目录。
+            addDir(File(context.filesDir, "applied"), "applied")
         }
         return out
     }
 
     data class RestoreResult(val mappings: Int, val images: Int)
 
-    /** 恢复备份；失败抛异常由调用方提示。 */
-    fun restore(context: Context, uri: Uri): RestoreResult {
+    /** 恢复备份；失败抛异常由调用方提示。传入当前 AppPrefs，恢复后让界面立刻重读。 */
+    fun restore(context: Context, uri: Uri, prefs: AppPrefs = AppPrefs(context)): RestoreResult {
         val tmp = File(context.cacheDir, "restore.zip")
         context.contentResolver.openInputStream(uri)?.use { input ->
             FileOutputStream(tmp).use { out -> input.copyTo(out) }
@@ -55,7 +63,6 @@ object AppBackup {
             val urlsXml = zip.getEntry("prefs/card_urls.xml")?.let { read(zip, it) }
             val namesXml = zip.getEntry("prefs/card_names.xml")?.let { read(zip, it) }
             if (settingsXml == null && urlsXml == null) error("备份内容不完整")
-            val prefs = AppPrefs(context)
             if (settingsXml != null) {
                 val values = parseMap(settingsXml)
                 prefs.restoreSettings(values.filterKeys { it !in EPHEMERAL })
@@ -70,17 +77,36 @@ object AppBackup {
                 prefs.restoreNames(names)
             }
             val imagesDir = File(context.filesDir, "images").apply { mkdirs() }
-            zip.entries().asSequence().filter { it.name.startsWith("images/") && !it.isDirectory }.forEach { e ->
-                val name = e.name.removePrefix("images/")
+            val appliedDir = File(context.filesDir, "applied").apply { mkdirs() }
+            zip.entries().asSequence().filter {
+                (it.name.startsWith("images/") || it.name.startsWith("applied/")) && !it.isDirectory
+            }.forEach { e ->
+                val isApplied = e.name.startsWith("applied/")
+                val name = e.name.removePrefix(if (isApplied) "applied/" else "images/")
                 if (name.isNotEmpty() && !name.contains('/')) {
+                    val target = File(if (isApplied) appliedDir else imagesDir, name)
                     zip.getInputStream(e).use { input ->
-                        FileOutputStream(File(imagesDir, name)).use { out -> input.copyTo(out) }
+                        FileOutputStream(target).use { out -> input.copyTo(out) }
                     }
                     images++
                 }
             }
+            // 兼容旧备份：旧版只打包了 images/，但映射可能指向 applied/。
+            // 卡包里通常还留着已应用的副本，缺图时从卡包私有目录补回来。
+            val wallet = WalletApps.primary(context)
+            if (wallet != null) {
+                val walletImages = "/data/data/${wallet.packageName}/files/images"
+                prefs.mappedImageNames().forEach { name ->
+                    if (File(imagesDir, name).exists() || File(appliedDir, name).exists()) return@forEach
+                    if (RootShell.copyIntoDir("$walletImages/$name", appliedDir.absolutePath, name, "644").ok) {
+                        images++
+                    }
+                }
+            }
         }
-        CardSync.writeMapSnapshot(context, AppPrefs(context))
+        // 文件已经全部写回，再触发一次界面重读；避免首页先拿到旧图/空文件。
+        prefs.bumpRevision()
+        CardSync.writeMapSnapshot(context, prefs)
         tmp.delete()
         return RestoreResult(mappings, images)
     }

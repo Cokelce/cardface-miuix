@@ -1,5 +1,6 @@
 package com.dsh.miuix.cardface.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.snap
@@ -49,6 +50,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
+import top.yukonga.miuix.kmp.glass.glassPanel
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -85,6 +87,7 @@ import top.yukonga.miuix.kmp.icon.extended.Rename
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.icon.extended.Info
+import top.yukonga.miuix.kmp.icon.extended.Help
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -97,6 +100,7 @@ fun HomeScreen(
     model: AppModel,
     innerPadding: PaddingValues,
     onOpenEditor: (String) -> Unit,
+    onOpenFaq: () -> Unit,
     onOpenGuide: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -158,6 +162,13 @@ fun HomeScreen(
                     title = "卡面工坊",
                     contentPadding = PaddingValues(start = 4.dp, end = 2.dp, top = 14.dp, bottom = 10.dp),
                 ) {
+                    IconButton(onClick = onOpenFaq) {
+                        Icon(
+                            imageVector = MiuixIcons.Help,
+                            contentDescription = "常见问题",
+                            tint = MiuixTheme.colorScheme.onBackground,
+                        )
+                    }
                     IconButton(onClick = { isRefreshing = true }) {
                         Icon(
                             imageVector = MiuixIcons.Refresh,
@@ -205,7 +216,7 @@ fun HomeScreen(
                                 }
                             }
                         },
-                        onOpenGuide = onOpenGuide,
+                        onOpenFaq = onOpenFaq,
                     )
                 }
             } else {
@@ -349,6 +360,7 @@ private fun HeroStatusCard(
     replacedCount: Int,
     demoMode: Boolean,
     onActivate: () -> Unit,
+    glass: Boolean = false,
 ) {
     val now = System.currentTimeMillis()
     val dayMs = 24L * 60L * 60L * 1000L
@@ -521,7 +533,7 @@ private fun EmptyHomeCard(
     onRefresh: () -> Unit,
     onOpenWallet: () -> Unit,
     onLoadDemo: () -> Unit,
-    onOpenGuide: () -> Unit,
+    onOpenFaq: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -601,8 +613,8 @@ private fun EmptyHomeCard(
         )
         Spacer(Modifier.height(4.dp))
         TextButton(
-            text = "查看使用说明",
-            onClick = onOpenGuide,
+            text = "查看常见问题",
+            onClick = onOpenFaq,
             modifier = Modifier.fillMaxWidth(),
         )
     }

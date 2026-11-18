@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -94,8 +95,6 @@ fun SettingsScreen(
     model: AppModel,
     innerPadding: PaddingValues,
     onOpenBlacklist: () -> Unit,
-    onOpenGuide: () -> Unit,
-    onOpenFaq: () -> Unit,
     onOpenAbout: () -> Unit,
     onOpenVersion: () -> Unit,
 ) {
@@ -138,16 +137,25 @@ fun SettingsScreen(
         if (uri == null) return@rememberLauncherForActivityResult
         confirm = ConfirmSpec(
             title = "恢复这份备份？",
-            message = "会覆盖当前设置、映射和图库替换图，恢复后建议重启卡包。",
+            message = "会覆盖当前设置、映射和图库替换图，恢复后会自动重启卡包。",
             confirmText = "恢复",
             onConfirm = {
                 scope.launch {
                     val result = withContext(Dispatchers.IO) {
-                        runCatching { com.dsh.miuix.cardface.core.AppBackup.restore(context, uri) }
+                        runCatching { com.dsh.miuix.cardface.core.AppBackup.restore(context, uri, prefs) }
                     }
-                    result.onSuccess {
+                    result.onSuccess { restored ->
+                        model.prefs.bumpRevision()
                         model.bumpStore()
-                        toast("已恢复：${it.mappings} 条映射，${it.images} 张图")
+                        scope.launch {
+                            val restarted = withContext(Dispatchers.IO) {
+                                DeviceBridge.restartWallet(context, walletKind)
+                            }
+                            toast(
+                                "已恢复：${restored.mappings} 条映射，${restored.images} 张图" +
+                                    if (restarted) "，卡包已重启" else "，请手动重启卡包",
+                            )
+                        }
                     }.onFailure { toast("恢复失败：${it.message ?: "文件不可用"}") }
                 }
             },
@@ -343,14 +351,7 @@ fun SettingsScreen(
                     },
                     onClick = { showDarkDialog = true },
                 )
-                RowDivider()
-                SwitchPreference(
-                    title = "界面过渡动画",
-                    startAction = { SettingRowIcon(MiuixIcons.Play) },
-                    summary = "关闭后页面切换、列表动画立即失效",
-                    checked = prefs.animations,
-                    onCheckedChange = { prefs.animations = it },
-                )
+
                 RowDivider()
                 ArrowPreference(
                     title = "恢复默认外观",
@@ -360,7 +361,6 @@ fun SettingsScreen(
                         prefs.dynamicColor = false
                         prefs.keyColorArgb = AppPrefs.DEFAULT_KEY_COLOR
                         prefs.darkMode = 0
-                        prefs.animations = true
                         toast("已恢复默认外观")
                     },
                 )
@@ -392,24 +392,6 @@ fun SettingsScreen(
                         scope.launch {
                             val ok = withContext(Dispatchers.IO) { DeviceBridge.restartWallet(context, walletKind) }
                             toast(if (ok) "已重启卡包" else "重启失败：请检查 root 或卡包是否安装")
-                        }
-                    },
-                )
-                RowDivider()
-                ArrowPreference(
-                    title = "导出诊断信息",
-                    startAction = { SettingRowIcon(MiuixIcons.Info) },
-                    summary = "生成版本、设备、映射数量等信息并分享",
-                    onClick = {
-                        scope.launch {
-                            val file = withContext(Dispatchers.IO) {
-                                runCatching { writeDiagnostics(context, prefs, status, versionName) }.getOrNull()
-                            }
-                            if (file != null) {
-                                com.dsh.miuix.cardface.core.CardShare.shareTextFile(context, file, "分享诊断信息")
-                            } else {
-                                toast("诊断信息生成失败")
-                            }
                         }
                     },
                 )
@@ -514,10 +496,6 @@ fun SettingsScreen(
                     onClick = onOpenVersion,
                 )
                 RowDivider()
-                ArrowPreference(title = "使用说明", onClick = onOpenGuide)
-                RowDivider()
-                ArrowPreference(title = "常见问题", onClick = onOpenFaq)
-                RowDivider()
                 ArrowPreference(
                     title = "关于应用",
                     startAction = { SettingRowIcon(MiuixIcons.Info) },
@@ -527,152 +505,80 @@ fun SettingsScreen(
             }
         }
 
-        item(key = "footer") {
-            Text(
-                text = "卡面工坊 · Miuix 重制版\n不收集任何数据，替换图只存在本机",
-                style = MiuixTheme.textStyles.footnote2,
-                color = MiuixTheme.colorScheme.onBackgroundVariant,
-                textAlign = TextAlign.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-            )
-        }
     }
 
-    val infoValue = info
-    if (infoValue != null) {
+    info?.let { (title, message) ->
         InfoDialog(
             show = true,
-            title = infoValue.first,
-            message = infoValue.second,
+            title = title,
+            message = message,
             onDismiss = { info = null },
         )
     }
-
-    val confirmValue = confirm
-    if (confirmValue != null) {
+    confirm?.let { spec ->
         ConfirmDialog(
             show = true,
-            title = confirmValue.title,
-            message = confirmValue.message,
-            confirmText = confirmValue.confirmText,
-            destructive = confirmValue.destructive,
+            title = spec.title,
+            message = spec.message,
+            confirmText = spec.confirmText,
+            destructive = spec.destructive,
             onConfirm = {
+                spec.onConfirm()
                 confirm = null
-                confirmValue.onConfirm()
             },
             onDismiss = { confirm = null },
         )
     }
-
-    // 主题色选择
     if (showThemeDialog) {
-        OverlayDialog(
-            show = true,
-            title = "主题色",
-            summary = "选中立即生效；动态取色关闭时才使用这里的颜色。",
-            onDismissRequest = { showThemeDialog = false },
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ThemeColors.presets.chunked(4).forEach { rowItems ->
+        OverlayDialog(show = true, title = "主题色", onDismissRequest = { showThemeDialog = false }) {
+            LazyColumn(modifier = Modifier.height(360.dp)) {
+                items(ThemeColors.presets.size) { index ->
+                    val preset = ThemeColors.presets[index]
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                prefs.keyColorArgb = preset.color.toArgb()
+                                showThemeDialog = false
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        rowItems.forEach { preset ->
-                            ThemeColorOption(
-                                preset = preset,
-                                selected = prefs.keyColorArgb == preset.color.toArgb(),
-                                onClick = {
-                                    prefs.keyColorArgb = preset.color.toArgb()
-                                    showThemeDialog = false
-                                    toast("主题色已切换为「${preset.name}」")
-                                },
-                                modifier = Modifier.weight(1f),
-                            )
+                        Box(Modifier.size(22.dp).background(preset.color, CircleShape))
+                        Spacer(Modifier.size(12.dp))
+                        Text(
+                            preset.name,
+                            style = MiuixTheme.textStyles.body2,
+                            color = MiuixTheme.colorScheme.onSurface,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (prefs.keyColorArgb == preset.color.toArgb()) {
+                            Icon(MiuixIcons.Ok, null, tint = MiuixTheme.colorScheme.primary)
                         }
                     }
                 }
             }
-            Spacer(Modifier.height(14.dp))
-            TextButton(
-                text = "关闭",
-                onClick = { showThemeDialog = false },
-                modifier = Modifier.fillMaxWidth(),
-            )
         }
     }
-
-    // 映射同步方式选择
-    if (showSyncDialog) {
-        OverlayDialog(
-            show = true,
-            title = "映射同步方式",
-            summary = "自动：本地 + LSPosed 远程双写（推荐）；仅远程：只写 LSPosed；仅本地：只写本地。切换后重启卡包生效。",
-            onDismissRequest = { showSyncDialog = false },
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SyncMode.entries.forEach { mode ->
-                    val selected = prefs.syncMode == mode
-                    TextButton(
-                        text = if (selected) "✓  ${mode.label}" else mode.label,
-                        onClick = {
-                            prefs.syncMode = mode
-                            showSyncDialog = false
-                            com.dsh.miuix.cardface.core.CardSync.writeMapSnapshot(context, prefs)
-                            toast("同步方式已切换：${mode.label}，重启卡包后生效")
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = if (selected) {
-                            ButtonDefaults.textButtonColorsPrimary()
-                        } else {
-                            ButtonDefaults.textButtonColors()
-                        },
-                    )
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            TextButton(
-                text = "关闭",
-                onClick = { showSyncDialog = false },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    }
-
-    // 深色模式选择
     if (showDarkDialog) {
-        OverlayDialog(
-            show = true,
-            title = "深色模式",
-            summary = "「跟随系统」会自动跟随手机的深色模式开关。",
-            onDismissRequest = { showDarkDialog = false },
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                DARK_MODE_OPTIONS.forEach { (value, label) ->
-                    val selected = prefs.darkMode == value
-                    TextButton(
-                        text = if (selected) "✓  $label" else label,
-                        onClick = {
-                            prefs.darkMode = value
-                            showDarkDialog = false
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = if (selected) {
-                            ButtonDefaults.textButtonColorsPrimary()
-                        } else {
-                            ButtonDefaults.textButtonColors()
-                        },
-                    )
+        OverlayDialog(show = true, title = "深色模式", onDismissRequest = { showDarkDialog = false }) {
+            Column {
+                listOf(0 to "跟随系统", 1 to "浅色", 2 to "深色").forEach { (value, label) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                prefs.darkMode = value
+                                showDarkDialog = false
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(label, style = MiuixTheme.textStyles.body2, color = MiuixTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                        if (prefs.darkMode == value) Icon(MiuixIcons.Ok, null, tint = MiuixTheme.colorScheme.primary)
+                    }
                 }
             }
-            Spacer(Modifier.height(10.dp))
-            TextButton(
-                text = "关闭",
-                onClick = { showDarkDialog = false },
-                modifier = Modifier.fillMaxWidth(),
-            )
         }
     }
 }
