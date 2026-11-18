@@ -114,11 +114,11 @@ class GitSyncTests(unittest.TestCase):
         self.assertEqual(self.out.read_text(), 'changed=false\n')
 
     def test_readme_change(self):
-        original_readme = (self.root / 'README.md').read_text()
         sha = self.change_upstream({'README.md': 'updated upstream\n', '.github/workflows/sync.yml': '# untrusted upstream automation\n'})
         self.assertEqual(self.prepare(), 0)
         self.assertIn('changed=true', self.out.read_text())
-        self.assertEqual((self.root / 'README.md').read_text(), original_readme)
+        self.assertIn('updated upstream', (self.root / 'README.md').read_text())
+        self.assertTrue((self.root / 'README.md').read_text().startswith('> 本分支为 **一加钱包适配版**'))
         self.assertIn('version=2.0.0-oneplus.6', self.out.read_text())
         self.assertEqual((self.root / '.github/workflows/sync.yml').read_text(), '# trusted workflow\n')
         self.assertIn('versionCode = 52', (self.root / 'app/build.gradle.kts').read_text())
@@ -132,7 +132,9 @@ class GitSyncTests(unittest.TestCase):
         git(self.root, 'push', '-q', 'origin', 'HEAD:main')
         self.change_upstream({'README.md': 'upstream replacement without fork customizations\n'})
         self.assertEqual(self.prepare(), 0)
-        self.assertEqual((self.root / 'README.md').read_text(), custom)
+        synced_readme = (self.root / 'README.md').read_text()
+        self.assertIn('upstream replacement without fork customizations', synced_readme)
+        self.assertTrue(synced_readme.startswith('> 本分支为 **一加钱包适配版**'))
 
     def test_latest_owner_code_is_applied_without_upstream_merge_parent(self):
         adaptation = 'app/src/main/kotlin/com/dsh/miuix/cardface/xposed/OwnerAddedHook.kt'

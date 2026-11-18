@@ -163,6 +163,53 @@ def record_release_notes(version, old, sha):
     }
     path.write_text(json.dumps(entries, ensure_ascii=False, indent=2) + "\n")
 
+def sync_readme_from_upstream(sha: str) -> None:
+    """Use the upstream README as the base, then apply the fork's README policy."""
+    readme = git("show", f"{sha}:README.md")
+    readme = readme.replace(
+        "给小米智能卡换一张喜欢的卡面",
+        "给小米智能卡、一加钱包换一张喜欢的卡面",
+        1,
+    )
+    readme = readme.replace(
+        "「卡面工坊」是一个给小米智能卡换卡面的 LSPosed 模块。",
+        "「卡面工坊」是一个给小米智能卡、一加钱包换卡面的 LSPosed 模块。",
+        1,
+    )
+    readme = re.sub(
+        r"(?m)^  <a href=\"https://github\\.com/Xposed-Modules-Repo/io\\.github\\.miambao\\.cardface\"><img[^\n]*\n",
+        "",
+        readme,
+    )
+    readme = readme.replace(
+        "- 卡包：小米智能卡（`com.miui.tsmclient`）\n",
+        "- 卡包：小米智能卡（`com.miui.tsmclient`）、一加钱包（`com.finshell.wallet`）；本分支维护一加钱包适配。\n",
+        1,
+    )
+    readme = readme.replace(
+        "2. 在 LSPosed 里启用「卡面工坊」，作用域勾选：小米智能卡。",
+        "2. 在 LSPosed 里启用「卡面工坊」，作用域勾选：小米智能卡、一加钱包；本分支重点适配一加钱包（`com.finshell.wallet`）。",
+        1,
+    )
+    readme = re.sub(
+        r"(?m)^- GitHub Releases：<https://github\\.com/MiamBao/cardface-miuix/releases/latest>\n",
+        "- GitHub Releases：<https://github.com/Cokelce/cardface-miuix/releases/latest>\n",
+        readme,
+    )
+    readme = re.sub(
+        r"(?m)^- LSPosed 模块仓库：<https://github\\.com/Xposed-Modules-Repo/io\\.github\\.miambao\\.cardface>\n?",
+        "",
+        readme,
+    )
+    prefix = (
+        "> 本分支为 **一加钱包适配版**，自动同步上游最新源码并叠加本仓库 main 的一加适配；"
+        "在线卡面页面与功能沿用上游，编辑页保留「从相册选、粘贴网址、从图库选、在线卡面」四入口。\n>\n"
+    )
+    if not readme.startswith("> 本分支为 **一加钱包适配版**"):
+        readme = prefix + readme
+    (ROOT / "README.md").write_text(readme, encoding="utf-8")
+
+
 def import_snapshot(old, sha):
     """Return conflict paths after restoring the latest owner code on failure."""
     # Normalize only identity/version fields before making the owner's patch.
@@ -242,6 +289,7 @@ def prepare() -> int:
         # Recompute from the latest owner source even when resuming an unpublished candidate.
         if not import_snapshot(old, sha):
             return 2
+        sync_readme_from_upstream(sha)
         existing_code = version_code(git("show", f"origin/{branch}:app/build.gradle.kts"))
         base = branch_state["base_version"]
         apply_config(base, max(existing_code, version_code(git("show", "origin/main:app/build.gradle.kts")) + 1), branch_version)
@@ -258,6 +306,7 @@ def prepare() -> int:
     git("switch", "-c", branch, "origin/main")
     if not import_snapshot(old, sha):
         return 2
+    sync_readme_from_upstream(sha)
     merged = git("show", f"{sha}:app/build.gradle.kts")
     base = parse_base_version(merged)
     if tuple(map(int, base.split("."))) < tuple(map(int, state["base_version"].split("."))):
