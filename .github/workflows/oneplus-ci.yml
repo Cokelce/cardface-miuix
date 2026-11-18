@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish a signed prerelease after checks pass
+        description: Publish a checked official release after checks pass
         type: boolean
         default: false
 permissions:
@@ -31,11 +31,11 @@ jobs:
         with:
           signing-keystore: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
           artifact-name: oneplus-${{ github.run_number }}-${{ github.run_attempt }}
-      - name: Publish checked OnePlus prerelease
+      - name: Publish checked official release
         if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.publish)
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.build.outputs.version }}
         shell: bash
         run: |
-          python3 tools/ci/publish_prerelease.py --version "$VERSION" --target "$(git rev-parse HEAD)"
+          python3 tools/ci/publish_release.py --version "$VERSION" --target "$(git rev-parse HEAD)"
